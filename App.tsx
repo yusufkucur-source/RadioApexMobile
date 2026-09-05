@@ -539,16 +539,11 @@ function useLineup() {
 }
 
 export default function App() {
-  const highQualityPlayer = useAudioPlayer(STREAM_URL_320, {
+  const player = useAudioPlayer(null, {
     updateInterval: 500,
     preferredForwardBufferDuration: 20,
   });
-  const lowQualityPlayer = useAudioPlayer(STREAM_URL_128, {
-    updateInterval: 500,
-    preferredForwardBufferDuration: 20,
-  });
-  const highQualityStatus = useAudioPlayerStatus(highQualityPlayer);
-  const lowQualityStatus = useAudioPlayerStatus(lowQualityPlayer);
+  const playerStatus = useAudioPlayerStatus(player);
   const { height: viewportHeight, width: viewportWidth } = useWindowDimensions();
   const [fontsLoaded] = useFonts({
     Antonio_400Regular,
@@ -562,6 +557,7 @@ export default function App() {
   const [isMenuVisible, setIsMenuVisible] = useState(false);
   const [activeScreen, setActiveScreen] = useState<AppScreen>('home');
   const [activeStreamQuality, setActiveStreamQuality] = useState<StreamQuality>('320');
+  const [isStreamLoading, setIsStreamLoading] = useState(false);
   const { djs, isDjsLoading } = useDjs();
   const { lineup, isLineupLoading } = useLineup();
 
@@ -571,12 +567,14 @@ export default function App() {
   const menuProgress = useRef(new Animated.Value(0)).current;
   const screenProgress = useRef(new Animated.Value(1)).current;
   const menuCloseTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const loadedStreamQuality = useRef<StreamQuality | null>(null);
+  const streamLoadingStartedAt = useRef(0);
   const particleAnimations = useRef(particles.map(() => new Animated.Value(0))).current;
   const waveAnimations = useRef(soundwaveBars.map(() => new Animated.Value(0))).current;
 
-  const activePlayer = activeStreamQuality === '128' ? lowQualityPlayer : highQualityPlayer;
-  const activePlayerStatus = activeStreamQuality === '128' ? lowQualityStatus : highQualityStatus;
-  const isPlaying = highQualityStatus.playing || lowQualityStatus.playing;
+  const activePlayer = player;
+  const activePlayerStatus = playerStatus;
+  const isPlaying = playerStatus.playing;
   const lockScreenMetadata = useMemo(
     () => ({
       title: nowPlaying.title || 'Radio Apex Live',
@@ -658,17 +656,29 @@ export default function App() {
     if (isPlaying) {
       activePlayer.setActiveForLockScreen(true, lockScreenMetadata, lockScreenOptions);
     } else {
-      highQualityPlayer.clearLockScreenControls();
-      lowQualityPlayer.clearLockScreenControls();
+      player.clearLockScreenControls();
     }
   }, [
     activePlayer,
-    highQualityPlayer,
     isPlaying,
     lockScreenMetadata,
     lockScreenOptions,
-    lowQualityPlayer,
+    player,
   ]);
+
+  useEffect(() => {
+    const hasSettledAfterLoading = Date.now() - streamLoadingStartedAt.current >= 500;
+
+    if (
+      isStreamLoading &&
+      hasSettledAfterLoading &&
+      playerStatus.isLoaded &&
+      playerStatus.playing &&
+      !playerStatus.isBuffering
+    ) {
+      setIsStreamLoading(false);
+    }
+  }, [isStreamLoading, playerStatus.isBuffering, playerStatus.isLoaded, playerStatus.playing]);
 
   useEffect(() => {
     pulseRing.stopAnimation();
@@ -804,22 +814,23 @@ export default function App() {
 
   const playStream = useCallback(
     (quality: StreamQuality) => {
-      if (quality === '320') {
-        lowQualityPlayer.pause();
-        lowQualityPlayer.clearLockScreenControls();
-        highQualityPlayer.setActiveForLockScreen(true, lockScreenMetadata, lockScreenOptions);
-        setActiveStreamQuality('320');
-        highQualityPlayer.play();
-        return;
+      const source = quality === '320' ? STREAM_URL_320 : STREAM_URL_128;
+      const needsSourceLoad = loadedStreamQuality.current !== quality;
+
+      if (needsSourceLoad) {
+        streamLoadingStartedAt.current = Date.now();
+        setIsStreamLoading(true);
+        player.replace(source);
+        loadedStreamQuality.current = quality;
+      } else {
+        setIsStreamLoading(false);
       }
 
-      highQualityPlayer.pause();
-      highQualityPlayer.clearLockScreenControls();
-      lowQualityPlayer.setActiveForLockScreen(true, lockScreenMetadata, lockScreenOptions);
-      setActiveStreamQuality('128');
-      lowQualityPlayer.play();
+      player.setActiveForLockScreen(true, lockScreenMetadata, lockScreenOptions);
+      setActiveStreamQuality(quality);
+      player.play();
     },
-    [highQualityPlayer, lockScreenMetadata, lockScreenOptions, lowQualityPlayer]
+    [lockScreenMetadata, lockScreenOptions, player]
   );
 
   const togglePlayback = useCallback(() => {
@@ -1077,6 +1088,7 @@ export default function App() {
                   glowScale={glowScale}
                   isMetadataLoading={isMetadataLoading}
                   isPlaying={isPlaying}
+                  isStreamLoading={isStreamLoading}
                   liveFontSize={liveFontSize}
                   nowPlaying={nowPlaying}
                   playHighBitrateStream={playHighBitrateStream}
@@ -1189,6 +1201,7 @@ type HomeScreenProps = {
   glowScale: Animated.AnimatedInterpolation<number>;
   isMetadataLoading: boolean;
   isPlaying: boolean;
+  isStreamLoading: boolean;
   liveFontSize: number;
   nowPlaying: NowPlaying;
   openExternalUrl: (url: string) => void;
@@ -1209,6 +1222,7 @@ function HomeScreen({
   glowScale,
   isMetadataLoading,
   isPlaying,
+  isStreamLoading,
   liveFontSize,
   nowPlaying,
   openExternalUrl,
@@ -1302,7 +1316,7 @@ function HomeScreen({
               pressed && styles.playButtonPressed,
             ]}
           >
-            {playerStatus.isBuffering ? (
+            {isStreamLoading ? (
               <View style={styles.transparentButtonFace}>
                 <ActivityIndicator color="#ef4444" />
               </View>
