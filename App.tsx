@@ -54,6 +54,8 @@ const STREAM_URL_128 = 'https://radio.cast.click/radio/8000/radio.mp3';
 const NOW_PLAYING_URL = 'https://radio.cast.click/api/nowplaying/radioapex';
 const DEFAULT_ARTWORK_URL = 'https://radioapex.com.tr/android-chrome-512x512.png';
 const MENU_ANIMATION_DURATION = 340;
+const STREAM_LOADING_MIN_DURATION = 500;
+const STREAM_LOADING_TIMEOUT = 12000;
 
 type StreamQuality = '320' | '128';
 
@@ -667,18 +669,25 @@ export default function App() {
   ]);
 
   useEffect(() => {
-    const hasSettledAfterLoading = Date.now() - streamLoadingStartedAt.current >= 500;
-
-    if (
-      isStreamLoading &&
-      hasSettledAfterLoading &&
-      playerStatus.isLoaded &&
-      playerStatus.playing &&
-      !playerStatus.isBuffering
-    ) {
-      setIsStreamLoading(false);
+    if (!isStreamLoading) {
+      return;
     }
-  }, [isStreamLoading, playerStatus.isBuffering, playerStatus.isLoaded, playerStatus.playing]);
+
+    const elapsed = Date.now() - streamLoadingStartedAt.current;
+    const settleTimer = setTimeout(() => {
+      if (playerStatus.playing) {
+        setIsStreamLoading(false);
+      }
+    }, Math.max(0, STREAM_LOADING_MIN_DURATION - elapsed));
+    const timeoutTimer = setTimeout(() => {
+      setIsStreamLoading(false);
+    }, Math.max(0, STREAM_LOADING_TIMEOUT - elapsed));
+
+    return () => {
+      clearTimeout(settleTimer);
+      clearTimeout(timeoutTimer);
+    };
+  }, [isStreamLoading, playerStatus.playing]);
 
   useEffect(() => {
     pulseRing.stopAnimation();
@@ -835,6 +844,7 @@ export default function App() {
 
   const togglePlayback = useCallback(() => {
     if (isPlaying) {
+      setIsStreamLoading(false);
       activePlayer.pause();
       return;
     }
