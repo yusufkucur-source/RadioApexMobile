@@ -8,7 +8,7 @@
     "userInterfaceStyle": "dark",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.radioapex.app",
+      "bundleIdentifier": "com.yusufkucur.radioapex",
       "infoPlist": {
         "UIBackgroundModes": [
           "audio"
