@@ -23,7 +23,7 @@ import {
   type DocumentData,
   type Firestore,
 } from 'firebase/firestore';
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
   ActivityIndicator,
   Animated,
@@ -49,10 +49,13 @@ import Svg, { Circle, Path, Rect } from 'react-native-svg';
 import AplexLogoRed from './assets/AplexLogoRed.svg';
 import TurntableLoop from './assets/turntable-loop.svg';
 
-const STREAM_URL = 'https://radio.cast.click/radio/8000/radio.mp3';
+const STREAM_URL_320 = 'https://radio.cast.click/radio/8000/radioapex.flac';
+const STREAM_URL_128 = 'https://radio.cast.click/radio/8000/radio.mp3';
 const NOW_PLAYING_URL = 'https://radio.cast.click/api/nowplaying/radioapex';
 const DEFAULT_ARTWORK_URL = 'https://radioapex.com.tr/android-chrome-512x512.png';
 const MENU_ANIMATION_DURATION = 340;
+
+type StreamQuality = '320' | '128';
 
 type SongHistoryItem = {
   title: string;
@@ -536,11 +539,16 @@ function useLineup() {
 }
 
 export default function App() {
-  const player = useAudioPlayer(STREAM_URL, {
+  const highQualityPlayer = useAudioPlayer(STREAM_URL_320, {
     updateInterval: 500,
     preferredForwardBufferDuration: 20,
   });
-  const playerStatus = useAudioPlayerStatus(player);
+  const lowQualityPlayer = useAudioPlayer(STREAM_URL_128, {
+    updateInterval: 500,
+    preferredForwardBufferDuration: 20,
+  });
+  const highQualityStatus = useAudioPlayerStatus(highQualityPlayer);
+  const lowQualityStatus = useAudioPlayerStatus(lowQualityPlayer);
   const { height: viewportHeight, width: viewportWidth } = useWindowDimensions();
   const [fontsLoaded] = useFonts({
     Antonio_400Regular,
@@ -553,6 +561,7 @@ export default function App() {
   const [isMetadataLoading, setIsMetadataLoading] = useState(true);
   const [isMenuVisible, setIsMenuVisible] = useState(false);
   const [activeScreen, setActiveScreen] = useState<AppScreen>('home');
+  const [activeStreamQuality, setActiveStreamQuality] = useState<StreamQuality>('320');
   const { djs, isDjsLoading } = useDjs();
   const { lineup, isLineupLoading } = useLineup();
 
@@ -565,7 +574,29 @@ export default function App() {
   const particleAnimations = useRef(particles.map(() => new Animated.Value(0))).current;
   const waveAnimations = useRef(soundwaveBars.map(() => new Animated.Value(0))).current;
 
-  const isPlaying = playerStatus.playing;
+  const activePlayer = activeStreamQuality === '128' ? lowQualityPlayer : highQualityPlayer;
+  const activePlayerStatus = activeStreamQuality === '128' ? lowQualityStatus : highQualityStatus;
+  const isPlaying = highQualityStatus.playing || lowQualityStatus.playing;
+  const lockScreenMetadata = useMemo(
+    () => ({
+      title: nowPlaying.title || 'Radio Apex Live',
+      artist: nowPlaying.artist || 'RADIO APEX',
+      albumTitle: 'Radio Apex',
+      artworkUrl:
+        nowPlaying.coverArt && !nowPlaying.coverArt.includes('generic_song')
+          ? nowPlaying.coverArt
+          : DEFAULT_ARTWORK_URL,
+    }),
+    [nowPlaying.artist, nowPlaying.coverArt, nowPlaying.title]
+  );
+  const lockScreenOptions = useMemo(
+    () => ({
+      isLiveStream: true,
+      showSeekBackward: false,
+      showSeekForward: false,
+    }),
+    []
+  );
 
   useEffect(() => {
     if (Platform.OS !== 'web' || typeof document === 'undefined') {
@@ -624,26 +655,20 @@ export default function App() {
   }, [refreshNowPlaying]);
 
   useEffect(() => {
-    const metadata = {
-      title: nowPlaying.title || 'Radio Apex Live',
-      artist: nowPlaying.artist || 'RADIO APEX',
-      albumTitle: 'Radio Apex',
-      artworkUrl:
-        nowPlaying.coverArt && !nowPlaying.coverArt.includes('generic_song')
-          ? nowPlaying.coverArt
-          : DEFAULT_ARTWORK_URL,
-    };
-
     if (isPlaying) {
-      player.setActiveForLockScreen(true, metadata, {
-        isLiveStream: true,
-        showSeekBackward: false,
-        showSeekForward: false,
-      });
+      activePlayer.setActiveForLockScreen(true, lockScreenMetadata, lockScreenOptions);
     } else {
-      player.clearLockScreenControls();
+      highQualityPlayer.clearLockScreenControls();
+      lowQualityPlayer.clearLockScreenControls();
     }
-  }, [isPlaying, nowPlaying.artist, nowPlaying.coverArt, nowPlaying.title, player]);
+  }, [
+    activePlayer,
+    highQualityPlayer,
+    isPlaying,
+    lockScreenMetadata,
+    lockScreenOptions,
+    lowQualityPlayer,
+  ]);
 
   useEffect(() => {
     pulseRing.stopAnimation();
@@ -673,11 +698,13 @@ export default function App() {
 
     return () => {
       pulseAnimation.stop();
+      pulseRing.stopAnimation();
+      pulseRing.setValue(0);
     };
   }, [activeScreen, pulseRing]);
 
   useEffect(() => {
-    Animated.loop(
+    const glowAnimation = Animated.loop(
       Animated.sequence([
         Animated.timing(glowPulse, {
           toValue: 1,
@@ -692,18 +719,18 @@ export default function App() {
           useNativeDriver: true,
         }),
       ])
-    ).start();
+    );
 
-    Animated.loop(
+    const turntableAnimation = Animated.loop(
       Animated.timing(turntableRotation, {
         toValue: 1,
         duration: 48000,
         easing: Easing.linear,
         useNativeDriver: true,
       })
-    ).start();
+    );
 
-    particleAnimations.forEach((value, index) => {
+    const particleAnimationsLoop = particleAnimations.map((value, index) =>
       Animated.loop(
         Animated.sequence([
           Animated.delay(particles[index].delay),
@@ -720,13 +747,30 @@ export default function App() {
             useNativeDriver: true,
           }),
         ])
-      ).start();
-    });
+      )
+    );
+
+    glowAnimation.start();
+    turntableAnimation.start();
+    particleAnimationsLoop.forEach((animation) => animation.start());
+
+    return () => {
+      glowAnimation.stop();
+      turntableAnimation.stop();
+      particleAnimationsLoop.forEach((animation) => animation.stop());
+    };
   }, [glowPulse, particleAnimations, turntableRotation]);
 
   useEffect(() => {
-    if (!isPlaying) {
-      waveAnimations.forEach((value) => value.setValue(0));
+    const resetWaveAnimations = () => {
+      waveAnimations.forEach((value) => {
+        value.stopAnimation();
+        value.setValue(0);
+      });
+    };
+
+    if (!isPlaying || activeScreen !== 'home') {
+      resetWaveAnimations();
       return;
     }
 
@@ -754,17 +798,46 @@ export default function App() {
 
     return () => {
       animations.forEach((animation) => animation.stop());
+      resetWaveAnimations();
     };
-  }, [isPlaying, waveAnimations]);
+  }, [activeScreen, isPlaying, waveAnimations]);
+
+  const playStream = useCallback(
+    (quality: StreamQuality) => {
+      if (quality === '320') {
+        lowQualityPlayer.pause();
+        lowQualityPlayer.clearLockScreenControls();
+        highQualityPlayer.setActiveForLockScreen(true, lockScreenMetadata, lockScreenOptions);
+        setActiveStreamQuality('320');
+        highQualityPlayer.play();
+        return;
+      }
+
+      highQualityPlayer.pause();
+      highQualityPlayer.clearLockScreenControls();
+      lowQualityPlayer.setActiveForLockScreen(true, lockScreenMetadata, lockScreenOptions);
+      setActiveStreamQuality('128');
+      lowQualityPlayer.play();
+    },
+    [highQualityPlayer, lockScreenMetadata, lockScreenOptions, lowQualityPlayer]
+  );
 
   const togglePlayback = useCallback(() => {
     if (isPlaying) {
-      player.pause();
+      activePlayer.pause();
       return;
     }
 
-    player.play();
-  }, [isPlaying, player]);
+    playStream('320');
+  }, [activePlayer, isPlaying, playStream]);
+
+  const playLowBitrateStream = useCallback(() => {
+    playStream('128');
+  }, [playStream]);
+
+  const playHighBitrateStream = useCallback(() => {
+    playStream('320');
+  }, [playStream]);
 
   const openExternalUrl = useCallback((url: string) => {
     void Linking.openURL(url);
@@ -998,6 +1071,7 @@ export default function App() {
 
               {activeScreen === 'home' ? (
                 <HomeScreen
+                  activeStreamQuality={activeStreamQuality}
                   artistFontSize={artistFontSize}
                   glowOpacity={glowOpacity}
                   glowScale={glowScale}
@@ -1005,7 +1079,9 @@ export default function App() {
                   isPlaying={isPlaying}
                   liveFontSize={liveFontSize}
                   nowPlaying={nowPlaying}
-                  playerStatus={playerStatus}
+                  playHighBitrateStream={playHighBitrateStream}
+                  playLowBitrateStream={playLowBitrateStream}
+                  playerStatus={activePlayerStatus}
                   pulseOpacity={pulseOpacity}
                   pulseScale={pulseScale}
                   titleFontSize={titleFontSize}
@@ -1107,6 +1183,7 @@ export default function App() {
 }
 
 type HomeScreenProps = {
+  activeStreamQuality: StreamQuality;
   artistFontSize: number;
   glowOpacity: Animated.AnimatedInterpolation<number>;
   glowScale: Animated.AnimatedInterpolation<number>;
@@ -1115,6 +1192,8 @@ type HomeScreenProps = {
   liveFontSize: number;
   nowPlaying: NowPlaying;
   openExternalUrl: (url: string) => void;
+  playHighBitrateStream: () => void;
+  playLowBitrateStream: () => void;
   playerStatus: ReturnType<typeof useAudioPlayerStatus>;
   pulseOpacity: Animated.AnimatedInterpolation<number>;
   pulseScale: Animated.AnimatedInterpolation<number>;
@@ -1124,6 +1203,7 @@ type HomeScreenProps = {
 };
 
 function HomeScreen({
+  activeStreamQuality,
   artistFontSize,
   glowOpacity,
   glowScale,
@@ -1132,6 +1212,8 @@ function HomeScreen({
   liveFontSize,
   nowPlaying,
   openExternalUrl,
+  playHighBitrateStream,
+  playLowBitrateStream,
   playerStatus,
   pulseOpacity,
   pulseScale,
@@ -1211,7 +1293,9 @@ function HomeScreen({
 
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel={isPlaying ? 'Yayini durdur' : 'Yayini baslat'}
+            accessibilityLabel={
+              isPlaying ? 'Yayini durdur' : '320 kbps yayini baslat'
+            }
             onPress={togglePlayback}
             style={({ pressed }) => [
               styles.playButton,
@@ -1236,6 +1320,53 @@ function HomeScreen({
             ) : (
               <OriginalPlayButton />
             )}
+          </Pressable>
+
+        </View>
+
+        <View style={styles.qualityButtonRow}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="128 kbps yayini baslat"
+            accessibilityState={{ selected: activeStreamQuality === '128' && isPlaying }}
+            hitSlop={10}
+            onPress={playLowBitrateStream}
+            style={({ pressed }) => [
+              styles.qualityButton,
+              activeStreamQuality === '128' && isPlaying && styles.qualityButtonActive,
+              pressed && styles.qualityButtonPressed,
+            ]}
+          >
+            <Text
+              style={[
+                styles.qualityButtonText,
+                activeStreamQuality === '128' && isPlaying && styles.qualityButtonTextActive,
+              ]}
+            >
+              128 KBPS
+            </Text>
+          </Pressable>
+
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="320 kbps yayini baslat"
+            accessibilityState={{ selected: activeStreamQuality === '320' && isPlaying }}
+            hitSlop={10}
+            onPress={playHighBitrateStream}
+            style={({ pressed }) => [
+              styles.qualityButton,
+              activeStreamQuality === '320' && isPlaying && styles.qualityButtonActive,
+              pressed && styles.qualityButtonPressed,
+            ]}
+          >
+            <Text
+              style={[
+                styles.qualityButtonText,
+                activeStreamQuality === '320' && isPlaying && styles.qualityButtonTextActive,
+              ]}
+            >
+              320 KBPS
+            </Text>
           </Pressable>
         </View>
       </View>
@@ -3143,6 +3274,51 @@ const styles = StyleSheet.create({
   },
   playButtonPressed: {
     transform: [{ scale: 0.97 }],
+  },
+  qualityButtonRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 10,
+    justifyContent: 'center',
+    marginTop: -42,
+    zIndex: 4,
+  },
+  qualityButton: {
+    alignItems: 'center',
+    backgroundColor: 'rgba(5,5,9,0.58)',
+    borderColor: 'rgba(253,29,53,0.48)',
+    borderRadius: 999,
+    borderWidth: 1,
+    elevation: 8,
+    height: 36,
+    justifyContent: 'center',
+    minWidth: 104,
+    paddingHorizontal: 18,
+    shadowColor: '#fd1d35',
+    shadowOffset: { height: 0, width: 0 },
+    shadowOpacity: 0.36,
+    shadowRadius: 12,
+  },
+  qualityButtonActive: {
+    backgroundColor: 'rgba(253,29,53,0.14)',
+    borderColor: '#fd1d35',
+    shadowOpacity: 0.72,
+    shadowRadius: 18,
+  },
+  qualityButtonPressed: {
+    transform: [{ scale: 0.96 }],
+  },
+  qualityButtonText: {
+    color: 'rgba(255,255,255,0.78)',
+    fontFamily: 'Roboto_700Bold',
+    fontSize: 11,
+    letterSpacing: 1.6,
+  },
+  qualityButtonTextActive: {
+    color: '#ffffff',
+    textShadowColor: 'rgba(253,29,53,0.82)',
+    textShadowOffset: { height: 0, width: 0 },
+    textShadowRadius: 10,
   },
   transparentButtonFace: {
     alignItems: 'center',
