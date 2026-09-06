@@ -1801,13 +1801,17 @@ function HomeScreen({
 
 function RecentTracks({ tracks }: { tracks: SongHistoryItem[] }) {
   const recentTracks = tracks.slice(0, 5);
+  const panelHeight = 50 + recentTracks.length * 24;
 
   if (recentTracks.length === 0) {
     return null;
   }
 
   return (
-    <View pointerEvents="none" style={styles.recentTracksPanel}>
+    <View
+      pointerEvents="none"
+      style={[styles.recentTracksPanel, { height: panelHeight }]}
+    >
       <Text style={styles.recentTracksTitle}>RECENTLY PLAYED</Text>
       <View style={styles.recentTracksList}>
         {recentTracks.map((track, index) => (
