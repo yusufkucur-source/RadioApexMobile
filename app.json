@@ -9,7 +9,15 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.yusufkucur.radioapex",
+      "icon": {
+        "light": "./assets/icon.png",
+        "dark": "./assets/icon.png",
+        "tinted": "./assets/icon-tinted.png"
+      },
       "infoPlist": {
+        "LSApplicationQueriesSchemes": [
+          "twitter"
+        ],
         "UIBackgroundModes": [
           "audio"
         ]

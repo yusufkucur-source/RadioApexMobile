@@ -900,8 +900,8 @@ export default function App() {
       ? `${nowPlaying.artist} - ${nowPlaying.title}`
       : 'the Radio Apex live stream';
     const message = hasSpecificTrack
-      ? `I'm listening to ${trackLabel} on Radio Apex. Listen here: ${SHARE_URL}`
-      : `I'm listening to ${trackLabel}. Listen here: ${SHARE_URL}`;
+      ? `I'm listening to ${trackLabel} on Radio Apex.`
+      : `I'm listening to ${trackLabel}.`;
 
     return message;
   }, [nowPlaying.artist, nowPlaying.title]);
@@ -924,13 +924,24 @@ export default function App() {
     });
   }, [getShareMessage]);
 
-  const postOnX = useCallback(() => {
-    const tweetUrl = `https://twitter.com/intent/tweet?text=${encodeURIComponent(getShareMessage())}`;
+  const postOnX = useCallback(async () => {
+    const message = `${getShareMessage()}\n\n${SHARE_URL}`;
+    const nativeComposerUrl = `twitter://post?message=${encodeURIComponent(message)}`;
+    const webComposerUrl =
+      `https://x.com/intent/post?text=${encodeURIComponent(getShareMessage())}` +
+      `&url=${encodeURIComponent(SHARE_URL)}`;
 
-    void Linking.openURL(tweetUrl).catch((error) => {
+    try {
+      if (Platform.OS !== 'web' && (await Linking.canOpenURL(nativeComposerUrl))) {
+        await Linking.openURL(nativeComposerUrl);
+        return;
+      }
+
+      await Linking.openURL(webComposerUrl);
+    } catch (error) {
       console.warn('X post composer could not be opened.', error);
       shareNowPlaying();
-    });
+    }
   }, [getShareMessage, shareNowPlaying]);
 
   const shareInstagramStoryImage = useCallback(async () => {
@@ -3128,11 +3139,11 @@ const styles = StyleSheet.create({
     paddingTop: 16,
   },
   headerGlass: {
-    height: 130,
+    height: Platform.OS === 'ios' ? 226 : 130,
     left: -22,
     position: 'absolute',
     right: -22,
-    top: -16,
+    top: Platform.OS === 'ios' ? -96 : -16,
     zIndex: 3,
   },
   screenStage: {
@@ -3144,7 +3155,7 @@ const styles = StyleSheet.create({
     zIndex: 2,
   },
   header: {
-    alignItems: 'flex-start',
+    alignItems: 'center',
     justifyContent: 'center',
     left: 22,
     position: 'absolute',
