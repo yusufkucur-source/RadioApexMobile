@@ -1788,7 +1788,6 @@ function RecentTracks({ tracks }: { tracks: SongHistoryItem[] }) {
       >
         <View style={styles.recentTracksHeaderRow}>
           <Text style={styles.recentTracksTitle}>RECENTLY PLAYED</Text>
-          <Text style={styles.recentTracksCount}>{recentTracks.length}</Text>
         </View>
         <RecentTrackRow track={recentTracks[0]} />
       </Pressable>
@@ -1810,7 +1809,7 @@ function RecentTracks({ tracks }: { tracks: SongHistoryItem[] }) {
             <View style={styles.recentTracksExpandedHeader}>
               <View>
                 <Text style={styles.recentTracksTitle}>RECENTLY PLAYED</Text>
-                <Text style={styles.recentTracksExpandedSubtitle}>LAST 5 TRACKS</Text>
+                <Text style={styles.recentTracksExpandedSubtitle}>RECENT TRACKS</Text>
               </View>
               <Pressable
                 accessibilityLabel="Close recently played tracks"
@@ -4312,12 +4311,6 @@ const styles = StyleSheet.create({
     fontFamily: 'Antonio_400Regular',
     fontSize: 10,
     letterSpacing: 3.2,
-  },
-  recentTracksCount: {
-    color: 'rgba(253,29,53,0.82)',
-    fontFamily: 'Antonio_400Regular',
-    fontSize: 10,
-    letterSpacing: 2,
   },
   recentTracksOverlay: {
     alignItems: 'center',
