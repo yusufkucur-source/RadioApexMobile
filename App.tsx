@@ -14,6 +14,7 @@ import {
 } from '@expo-google-fonts/roboto';
 import { useFonts } from 'expo-font';
 import { LinearGradient } from 'expo-linear-gradient';
+import * as Sharing from 'expo-sharing';
 import { StatusBar } from 'expo-status-bar';
 import { initializeApp, getApps, type FirebaseApp } from 'firebase/app';
 import {
@@ -32,11 +33,13 @@ import {
   ImageBackground,
   Linking,
   type LayoutChangeEvent,
+  Modal,
   type NativeScrollEvent,
   type NativeSyntheticEvent,
   Platform,
   Pressable,
   ScrollView,
+  Share,
   StyleSheet,
   type StyleProp,
   Text,
@@ -46,6 +49,7 @@ import {
 } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import Svg, { Circle, Path, Rect } from 'react-native-svg';
+import { captureRef } from 'react-native-view-shot';
 import AplexLogoRed from './assets/AplexLogoRed.svg';
 import TurntableLoop from './assets/turntable-loop.svg';
 
@@ -53,6 +57,11 @@ const STREAM_URL_320 = 'https://radio.cast.click/radio/8000/radioapex.flac';
 const STREAM_URL_128 = 'https://radio.cast.click/radio/8000/radio.mp3';
 const NOW_PLAYING_URL = 'https://radio.cast.click/api/nowplaying/radioapex';
 const DEFAULT_ARTWORK_URL = 'https://radioapex.com.tr/android-chrome-512x512.png';
+const SHARE_URL = 'https://radioapex.com.tr';
+const STORY_SHARE_IMAGE_WIDTH = 1080;
+const STORY_SHARE_IMAGE_HEIGHT = 1920;
+const STORY_SHARE_CARD_WIDTH = 360;
+const STORY_SHARE_CARD_HEIGHT = 640;
 const MENU_ANIMATION_DURATION = 340;
 const STREAM_LOADING_MIN_DURATION = 500;
 const STREAM_LOADING_TIMEOUT = 12000;
@@ -560,6 +569,8 @@ export default function App() {
   const [activeScreen, setActiveScreen] = useState<AppScreen>('home');
   const [activeStreamQuality, setActiveStreamQuality] = useState<StreamQuality>('320');
   const [isStreamLoading, setIsStreamLoading] = useState(false);
+  const [isShareOptionsVisible, setIsShareOptionsVisible] = useState(false);
+  const [isStoryShareLoading, setIsStoryShareLoading] = useState(false);
   const { djs, isDjsLoading } = useDjs();
   const { lineup, isLineupLoading } = useLineup();
 
@@ -571,6 +582,7 @@ export default function App() {
   const menuCloseTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const loadedStreamQuality = useRef<StreamQuality | null>(null);
   const streamLoadingStartedAt = useRef(0);
+  const storyShareCardRef = useRef<View>(null);
   const particleAnimations = useRef(particles.map(() => new Animated.Value(0))).current;
   const waveAnimations = useRef(soundwaveBars.map(() => new Animated.Value(0))).current;
 
@@ -864,6 +876,124 @@ export default function App() {
     void Linking.openURL(url);
   }, []);
 
+  const getShareMessage = useCallback(() => {
+    const hasSpecificTrack =
+      nowPlaying.title &&
+      nowPlaying.title !== defaultNowPlaying.title &&
+      nowPlaying.artist &&
+      nowPlaying.artist !== defaultNowPlaying.artist;
+    const trackLabel = hasSpecificTrack
+      ? `${nowPlaying.artist} - ${nowPlaying.title}`
+      : 'the Radio Apex live stream';
+    const message = hasSpecificTrack
+      ? `I'm listening to ${trackLabel} on Radio Apex. Listen here: ${SHARE_URL}`
+      : `I'm listening to ${trackLabel}. Listen here: ${SHARE_URL}`;
+
+    return message;
+  }, [nowPlaying.artist, nowPlaying.title]);
+
+  const shareNowPlaying = useCallback(() => {
+    const message = getShareMessage();
+
+    void Share.share(
+      {
+        message,
+        title: 'Radio Apex',
+        url: SHARE_URL,
+      },
+      {
+        dialogTitle: 'Share Radio Apex',
+        subject: 'Radio Apex',
+      }
+    ).catch((error) => {
+      console.warn('Now playing share sheet could not be opened.', error);
+    });
+  }, [getShareMessage]);
+
+  const postOnX = useCallback(() => {
+    const tweetUrl = `https://twitter.com/intent/tweet?text=${encodeURIComponent(getShareMessage())}`;
+
+    void Linking.openURL(tweetUrl).catch((error) => {
+      console.warn('X post composer could not be opened.', error);
+      shareNowPlaying();
+    });
+  }, [getShareMessage, shareNowPlaying]);
+
+  const shareInstagramStoryImage = useCallback(async () => {
+    if (isStoryShareLoading) {
+      return;
+    }
+
+    if (Platform.OS === 'web') {
+      shareNowPlaying();
+      return;
+    }
+
+    setIsStoryShareLoading(true);
+
+    try {
+      const canShareFiles = await Sharing.isAvailableAsync();
+
+      if (!canShareFiles) {
+        shareNowPlaying();
+        return;
+      }
+
+      await new Promise<void>((resolve) => {
+        requestAnimationFrame(() => resolve());
+      });
+
+      const uri = await captureRef(storyShareCardRef, {
+        fileName: 'radioapex-story',
+        format: 'png',
+        height: STORY_SHARE_IMAGE_HEIGHT,
+        quality: 1,
+        result: 'tmpfile',
+        width: STORY_SHARE_IMAGE_WIDTH,
+      });
+
+      await Sharing.shareAsync(uri, {
+        dialogTitle: 'Share image for Instagram Story',
+        mimeType: 'image/png',
+        UTI: 'public.png',
+      });
+    } catch (error) {
+      console.warn('Instagram story share image could not be created.', error);
+      shareNowPlaying();
+    } finally {
+      setIsStoryShareLoading(false);
+    }
+  }, [isStoryShareLoading, shareNowPlaying]);
+
+  const openShareOptions = useCallback(() => {
+    setIsShareOptionsVisible(true);
+  }, []);
+
+  const closeShareOptions = useCallback(() => {
+    setIsShareOptionsVisible(false);
+  }, []);
+
+  const shareTextFromOptions = useCallback(() => {
+    setIsShareOptionsVisible(false);
+    requestAnimationFrame(() => {
+      shareNowPlaying();
+    });
+  }, [shareNowPlaying]);
+
+  const postOnXFromOptions = useCallback(() => {
+    setIsShareOptionsVisible(false);
+    requestAnimationFrame(() => {
+      postOnX();
+    });
+  }, [postOnX]);
+
+  const shareStoryFromOptions = useCallback(() => {
+    setIsShareOptionsVisible(false);
+    requestAnimationFrame(() => {
+      void shareInstagramStoryImage();
+    });
+  }, [shareInstagramStoryImage]);
+
   const openMenu = useCallback(() => {
     if (menuCloseTimer.current) {
       clearTimeout(menuCloseTimer.current);
@@ -1035,6 +1165,12 @@ export default function App() {
         <SafeAreaView style={styles.safeArea}>
           <StatusBar style="light" />
           <View style={styles.content}>
+            <View pointerEvents="none" style={styles.storyShareStage}>
+              <View ref={storyShareCardRef} collapsable={false}>
+                <NowPlayingStoryCard nowPlaying={nowPlaying} />
+              </View>
+            </View>
+
             <LinearGradient
               pointerEvents="none"
               colors={[
@@ -1110,6 +1246,7 @@ export default function App() {
                   togglePlayback={togglePlayback}
                   waveAnimations={waveAnimations}
                   openExternalUrl={openExternalUrl}
+                  openShareOptions={openShareOptions}
                 />
               ) : activeScreen === 'djs' ? (
                 <DjsScreen
@@ -1196,6 +1333,15 @@ export default function App() {
                 </Animated.View>
               </View>
             ) : null}
+
+            <ShareOptionsSheet
+              isStoryShareLoading={isStoryShareLoading}
+              onClose={closeShareOptions}
+              onPostOnX={postOnXFromOptions}
+              onShareStory={shareStoryFromOptions}
+              onShareText={shareTextFromOptions}
+              visible={isShareOptionsVisible}
+            />
           </View>
         </SafeAreaView>
       </LinearGradient>
@@ -1215,6 +1361,7 @@ type HomeScreenProps = {
   liveFontSize: number;
   nowPlaying: NowPlaying;
   openExternalUrl: (url: string) => void;
+  openShareOptions: () => void;
   playHighBitrateStream: () => void;
   playLowBitrateStream: () => void;
   playerStatus: ReturnType<typeof useAudioPlayerStatus>;
@@ -1236,6 +1383,7 @@ function HomeScreen({
   liveFontSize,
   nowPlaying,
   openExternalUrl,
+  openShareOptions,
   playHighBitrateStream,
   playLowBitrateStream,
   playerStatus,
@@ -1420,8 +1568,242 @@ function HomeScreen({
             </Pressable>
           );
         })}
+        <Pressable
+          accessibilityLabel="Open share options"
+          accessibilityRole="button"
+          onPress={openShareOptions}
+          style={({ pressed }) => [
+            styles.socialButton,
+            pressed && styles.socialButtonPressed,
+          ]}
+        >
+          {({ pressed }) => (
+            <ShareIcon
+              color={pressed ? '#fd1d35' : 'rgba(255,255,255,0.60)'}
+              size={17}
+              strokeWidth={2}
+            />
+          )}
+        </Pressable>
       </View>
     </>
+  );
+}
+
+function NowPlayingStoryCard({ nowPlaying }: { nowPlaying: NowPlaying }) {
+  const title = nowPlaying.title || defaultNowPlaying.title;
+  const artist = nowPlaying.artist || defaultNowPlaying.artist;
+  const titleTextStyle = getStoryTitleTextStyle(title);
+  const artistTextStyle = getStoryArtistTextStyle(artist);
+
+  return (
+    <View style={styles.storyCard} collapsable={false}>
+      <LinearGradient
+        colors={['#120711', '#07111f', '#102f36', '#040406']}
+        locations={[0, 0.42, 0.72, 1]}
+        style={styles.storyCardGradient}
+      />
+      <View style={styles.storyCardAccent} />
+      <View pointerEvents="none" style={styles.storyCardTurntable}>
+        <TurntableLoop height={760} width={878} />
+      </View>
+
+      <View style={styles.storyCardHeader}>
+        <AplexLogoRed width={156} height={67} />
+        <Text style={styles.storyCardHeaderText}>LIVE FROM RADIO APEX</Text>
+      </View>
+
+      <View style={styles.storyCardBody}>
+        <View style={styles.storyCardMeta}>
+          <View style={styles.storyCardLivePill}>
+            <View style={styles.storyCardLiveDot} />
+            <Text style={styles.storyCardLiveText}>LIVE</Text>
+          </View>
+          <Text style={styles.storyCardEyebrow}>NOW PLAYING</Text>
+        </View>
+        <View style={styles.storyCardTrackBlock}>
+          <Text style={[styles.storyCardTitle, titleTextStyle]} numberOfLines={4}>
+            {title}
+          </Text>
+          <Text style={[styles.storyCardArtist, artistTextStyle]} numberOfLines={2}>
+            {artist}
+          </Text>
+        </View>
+      </View>
+
+      <View style={styles.storyCardFooter}>
+        <Text style={styles.storyCardUrl}>radioapex.com.tr</Text>
+        <Text style={styles.storyCardFooterText}>100% DANCE MUSIC STATION</Text>
+      </View>
+    </View>
+  );
+}
+
+function getLongestWordLength(text: string) {
+  return text
+    .trim()
+    .split(/\s+/)
+    .reduce((maxLength, word) => Math.max(maxLength, word.length), 0);
+}
+
+function getStoryTitleTextStyle(title: string) {
+  const titleLength = title.trim().length;
+  const longestWordLength = getLongestWordLength(title);
+
+  if (titleLength >= 52 || longestWordLength >= 18) {
+    return {
+      fontSize: 23,
+      lineHeight: 29,
+      maxWidth: 306,
+    };
+  }
+
+  if (titleLength >= 38 || longestWordLength >= 15) {
+    return {
+      fontSize: 26,
+      lineHeight: 32,
+      maxWidth: 306,
+    };
+  }
+
+  if (titleLength >= 28 || longestWordLength >= 12) {
+    return {
+      fontSize: 28,
+      lineHeight: 34,
+    };
+  }
+
+  return null;
+}
+
+function getStoryArtistTextStyle(artist: string) {
+  const artistLength = artist.trim().length;
+  const longestWordLength = getLongestWordLength(artist);
+
+  if (artistLength >= 44 || longestWordLength >= 18) {
+    return {
+      fontSize: 13,
+      letterSpacing: 1.8,
+      lineHeight: 19,
+      maxWidth: 306,
+    };
+  }
+
+  if (artistLength >= 32 || longestWordLength >= 15) {
+    return {
+      fontSize: 15,
+      letterSpacing: 2.3,
+      lineHeight: 22,
+      maxWidth: 306,
+    };
+  }
+
+  return null;
+}
+
+type ShareOptionsSheetProps = {
+  isStoryShareLoading: boolean;
+  onClose: () => void;
+  onPostOnX: () => void;
+  onShareStory: () => void;
+  onShareText: () => void;
+  visible: boolean;
+};
+
+function ShareOptionsSheet({
+  isStoryShareLoading,
+  onClose,
+  onPostOnX,
+  onShareStory,
+  onShareText,
+  visible,
+}: ShareOptionsSheetProps) {
+  return (
+    <Modal
+      animationType="fade"
+      onRequestClose={onClose}
+      transparent
+      visible={visible}
+    >
+      <View style={styles.shareOptionsLayer}>
+        <Pressable
+          accessibilityLabel="Close share options"
+          onPress={onClose}
+          style={StyleSheet.absoluteFill}
+        />
+        <View style={styles.shareOptionsSheet}>
+          <View style={styles.shareOptionsHandle} />
+          <Text style={styles.shareOptionsTitle}>Share</Text>
+
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Share as text"
+            onPress={onShareText}
+            style={({ pressed }) => [
+              styles.shareOptionButton,
+              pressed && styles.shareOptionButtonPressed,
+            ]}
+          >
+            <View style={styles.shareOptionIcon}>
+              <ShareIcon color="#fd1d35" size={20} strokeWidth={2} />
+            </View>
+            <View style={styles.shareOptionTextBlock}>
+              <Text style={styles.shareOptionTitle}>Share Now Playing</Text>
+              <Text style={styles.shareOptionSubtitle}>
+                Send the current track via WhatsApp, Messages, and more
+              </Text>
+            </View>
+          </Pressable>
+
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Post on X"
+            onPress={onPostOnX}
+            style={({ pressed }) => [
+              styles.shareOptionButton,
+              pressed && styles.shareOptionButtonPressed,
+            ]}
+          >
+            <View style={styles.shareOptionIcon}>
+              <XIcon color="#fd1d35" size={18} strokeWidth={2} />
+            </View>
+            <View style={styles.shareOptionTextBlock}>
+              <Text style={styles.shareOptionTitle}>Post on X</Text>
+              <Text style={styles.shareOptionSubtitle}>
+                Open X with a ready-to-post message
+              </Text>
+            </View>
+          </Pressable>
+
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Share image for Instagram Story"
+            accessibilityState={{ busy: isStoryShareLoading }}
+            disabled={isStoryShareLoading}
+            onPress={onShareStory}
+            style={({ pressed }) => [
+              styles.shareOptionButton,
+              isStoryShareLoading && styles.shareOptionButtonDisabled,
+              pressed && styles.shareOptionButtonPressed,
+            ]}
+          >
+            <View style={styles.shareOptionIcon}>
+              {isStoryShareLoading ? (
+                <ActivityIndicator color="#fd1d35" size="small" />
+              ) : (
+                <StoryIcon color="#fd1d35" size={20} strokeWidth={2} />
+              )}
+            </View>
+            <View style={styles.shareOptionTextBlock}>
+              <Text style={styles.shareOptionTitle}>Share Story Image</Text>
+              <Text style={styles.shareOptionSubtitle}>
+                Send a 9:16 visual for Instagram Stories or WhatsApp Status
+              </Text>
+            </View>
+          </Pressable>
+        </View>
+      </View>
+    </Modal>
   );
 }
 
@@ -2457,6 +2839,46 @@ function MusicIcon({ color, size = 20, strokeWidth = 2 }: SocialIconProps) {
   );
 }
 
+function StoryIcon({ color, size = 20, strokeWidth = 2 }: SocialIconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Rect
+        x={6}
+        y={3}
+        width={12}
+        height={18}
+        rx={3}
+        stroke={color}
+        strokeWidth={strokeWidth}
+      />
+      <Path
+        d="M12 8V14M9 11H15"
+        stroke={color}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={strokeWidth}
+      />
+    </Svg>
+  );
+}
+
+function ShareIcon({ color, size = 20, strokeWidth = 2 }: SocialIconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Circle cx={18} cy={5} r={3} stroke={color} strokeWidth={strokeWidth} />
+      <Circle cx={6} cy={12} r={3} stroke={color} strokeWidth={strokeWidth} />
+      <Circle cx={18} cy={19} r={3} stroke={color} strokeWidth={strokeWidth} />
+      <Path
+        d="M8.7 10.7L15.3 6.3M8.7 13.3L15.3 17.7"
+        stroke={color}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={strokeWidth}
+      />
+    </Svg>
+  );
+}
+
 const styles = StyleSheet.create({
   loadingScreen: {
     alignItems: 'center',
@@ -3218,6 +3640,155 @@ const styles = StyleSheet.create({
     letterSpacing: 2.5,
     textTransform: 'uppercase',
   },
+  storyShareStage: {
+    height: STORY_SHARE_CARD_HEIGHT,
+    left: -10000,
+    position: 'absolute',
+    top: 0,
+    width: STORY_SHARE_CARD_WIDTH,
+  },
+  storyCard: {
+    backgroundColor: '#050509',
+    height: STORY_SHARE_CARD_HEIGHT,
+    overflow: 'hidden',
+    paddingHorizontal: 30,
+    paddingVertical: 36,
+    width: STORY_SHARE_CARD_WIDTH,
+  },
+  storyCardGradient: {
+    bottom: 0,
+    left: 0,
+    position: 'absolute',
+    right: 0,
+    top: 0,
+  },
+  storyCardAccent: {
+    backgroundColor: '#fd1d35',
+    height: 5,
+    left: 0,
+    position: 'absolute',
+    right: 0,
+    top: 0,
+  },
+  storyCardTurntable: {
+    left: (STORY_SHARE_CARD_WIDTH - 878) / 2,
+    opacity: 0.08,
+    position: 'absolute',
+    top: (STORY_SHARE_CARD_HEIGHT - 760) / 2,
+  },
+  storyCardHeader: {
+    alignItems: 'center',
+    gap: 12,
+    left: 30,
+    position: 'absolute',
+    right: 30,
+    top: 36,
+    zIndex: 2,
+  },
+  storyCardHeaderText: {
+    color: 'rgba(255,255,255,0.62)',
+    fontFamily: 'Antonio_400Regular',
+    fontSize: 11,
+    letterSpacing: 4.2,
+    textAlign: 'center',
+  },
+  storyCardBody: {
+    alignItems: 'center',
+    bottom: 0,
+    justifyContent: 'center',
+    left: 30,
+    position: 'absolute',
+    right: 30,
+    top: 0,
+    zIndex: 2,
+  },
+  storyCardMeta: {
+    alignItems: 'center',
+    bottom: STORY_SHARE_CARD_HEIGHT / 2 + 48,
+    left: 0,
+    position: 'absolute',
+    right: 0,
+  },
+  storyCardTrackBlock: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 118,
+  },
+  storyCardLivePill: {
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderColor: 'rgba(255,255,255,0.14)',
+    borderRadius: 999,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 18,
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+  },
+  storyCardLiveDot: {
+    backgroundColor: '#fd1d35',
+    borderRadius: 999,
+    height: 6,
+    width: 6,
+  },
+  storyCardLiveText: {
+    color: 'rgba(255,255,255,0.78)',
+    fontFamily: 'Antonio_400Regular',
+    fontSize: 11,
+    letterSpacing: 4,
+  },
+  storyCardEyebrow: {
+    color: 'rgba(255,255,255,0.52)',
+    fontFamily: 'Antonio_400Regular',
+    fontSize: 12,
+    letterSpacing: 5.2,
+    textAlign: 'center',
+  },
+  storyCardTitle: {
+    color: '#fd1d35',
+    fontFamily: 'Roboto_700Bold',
+    fontSize: 31,
+    lineHeight: 38,
+    maxWidth: 300,
+    textAlign: 'center',
+    textShadowColor: 'rgba(253,29,53,0.54)',
+    textShadowOffset: { height: 0, width: 0 },
+    textShadowRadius: 18,
+    textTransform: 'uppercase',
+  },
+  storyCardArtist: {
+    color: '#ffffff',
+    fontFamily: 'Roboto_500Medium',
+    fontSize: 17,
+    letterSpacing: 3,
+    lineHeight: 24,
+    marginTop: 18,
+    maxWidth: 300,
+    textAlign: 'center',
+    textTransform: 'uppercase',
+  },
+  storyCardFooter: {
+    alignItems: 'center',
+    bottom: 36,
+    gap: 8,
+    left: 30,
+    position: 'absolute',
+    right: 30,
+    zIndex: 2,
+  },
+  storyCardUrl: {
+    color: '#ffffff',
+    fontFamily: 'Roboto_400Regular',
+    fontSize: 15,
+    letterSpacing: 1.2,
+  },
+  storyCardFooterText: {
+    color: 'rgba(255,255,255,0.52)',
+    fontFamily: 'Antonio_400Regular',
+    fontSize: 11,
+    letterSpacing: 3.6,
+  },
   playerSection: {
     alignItems: 'center',
     bottom: 0,
@@ -3375,6 +3946,83 @@ const styles = StyleSheet.create({
     shadowRadius: 10,
     width: 8,
   },
+  shareOptionsLayer: {
+    backgroundColor: 'rgba(0,0,0,0.56)',
+    flex: 1,
+    justifyContent: 'flex-end',
+  },
+  shareOptionsSheet: {
+    backgroundColor: '#090a10',
+    borderColor: 'rgba(255,255,255,0.10)',
+    borderTopLeftRadius: 22,
+    borderTopRightRadius: 22,
+    borderWidth: 1,
+    gap: 12,
+    paddingBottom: 28,
+    paddingHorizontal: 20,
+    paddingTop: 12,
+  },
+  shareOptionsHandle: {
+    alignSelf: 'center',
+    backgroundColor: 'rgba(255,255,255,0.30)',
+    borderRadius: 999,
+    height: 4,
+    marginBottom: 8,
+    width: 54,
+  },
+  shareOptionsTitle: {
+    color: '#ffffff',
+    fontFamily: 'Roboto_700Bold',
+    fontSize: 18,
+    lineHeight: 24,
+    marginBottom: 4,
+  },
+  shareOptionButton: {
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    borderColor: 'rgba(255,255,255,0.10)',
+    borderRadius: 14,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 14,
+    minHeight: 66,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  shareOptionButtonPressed: {
+    backgroundColor: 'rgba(253,29,53,0.10)',
+    borderColor: 'rgba(253,29,53,0.48)',
+    transform: [{ scale: 0.99 }],
+  },
+  shareOptionButtonDisabled: {
+    opacity: 0.7,
+  },
+  shareOptionIcon: {
+    alignItems: 'center',
+    backgroundColor: 'rgba(253,29,53,0.10)',
+    borderColor: 'rgba(253,29,53,0.30)',
+    borderRadius: 999,
+    borderWidth: 1,
+    height: 42,
+    justifyContent: 'center',
+    width: 42,
+  },
+  shareOptionTextBlock: {
+    flex: 1,
+    gap: 3,
+  },
+  shareOptionTitle: {
+    color: '#ffffff',
+    fontFamily: 'Roboto_700Bold',
+    fontSize: 15,
+    lineHeight: 20,
+  },
+  shareOptionSubtitle: {
+    color: 'rgba(255,255,255,0.58)',
+    fontFamily: 'Roboto_400Regular',
+    fontSize: 13,
+    lineHeight: 18,
+  },
   socialRow: {
     bottom: 0,
     flexDirection: 'row',
@@ -3401,5 +4049,8 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(253,29,53,0.10)',
     borderColor: 'rgba(253,29,53,0.50)',
     transform: [{ scale: 1.08 }],
+  },
+  socialButtonDisabled: {
+    opacity: 0.68,
   },
 });
