@@ -55,7 +55,8 @@ import TurntableLoop from './assets/turntable-loop.svg';
 
 const STREAM_URL_320 = 'https://radio.cast.click/radio/8000/radioapex.flac';
 const STREAM_URL_128 = 'https://radio.cast.click/radio/8000/radio.mp3';
-const NOW_PLAYING_URL = 'https://radio.cast.click/api/nowplaying/radioapex';
+const NOW_PLAYING_URL = 'https://radioapex.com.tr/api/now-playing';
+const AZURACAST_NOW_PLAYING_URL = 'https://radio.cast.click/api/nowplaying/radioapex';
 const DEFAULT_ARTWORK_URL = 'https://radioapex.com.tr/android-chrome-512x512.png';
 const SHARE_URL = 'https://radioapex.com.tr';
 const STORY_SHARE_IMAGE_WIDTH = 1080;
@@ -100,6 +101,15 @@ type AzuraCastResponse = {
   song_history?: Array<{
     song?: AzuraCastSong;
   }>;
+};
+
+type RadioApexNowPlayingResponse = {
+  title?: string;
+  artist?: string;
+  isLive?: boolean;
+  listeners?: number;
+  coverArt?: string | null;
+  songHistory?: Array<Partial<SongHistoryItem>>;
 };
 
 type DJProfile = {
@@ -338,17 +348,57 @@ function getFirestoreInstance(): Firestore | null {
   return firestoreDb;
 }
 
+function normalizeTrackText(value?: string) {
+  return (value || '').replace(/\s+/g, ' ').trim();
+}
+
 function normalizeSong(song?: AzuraCastSong): SongHistoryItem {
   const text = song?.text || [song?.artist, song?.title].filter(Boolean).join(' - ');
-  const [fallbackArtist = '', fallbackTitle = ''] = text.split(' - ');
+  const [fallbackArtist = '', ...fallbackTitleParts] = text.split(' - ');
+  const fallbackTitle = fallbackTitleParts.join(' - ');
 
   return {
-    title: (song?.title || fallbackTitle || text || 'Radio Apex Live').trim(),
-    artist: (song?.artist || fallbackArtist || 'Radio Apex').trim(),
+    title: normalizeTrackText(song?.title || fallbackTitle || text || 'Radio Apex Live'),
+    artist: normalizeTrackText(song?.artist || fallbackArtist || 'Radio Apex'),
   };
 }
 
-function parseNowPlaying(data: AzuraCastResponse): NowPlaying {
+function normalizeHistoryItem(item?: Partial<SongHistoryItem>): SongHistoryItem | null {
+  const title = normalizeTrackText(item?.title);
+  const artist = normalizeTrackText(item?.artist);
+
+  if (!title || title.toLowerCase() === 'unknown') {
+    return null;
+  }
+
+  return {
+    title,
+    artist: artist || 'Radio Apex',
+  };
+}
+
+function getSongHistoryKey(track: SongHistoryItem) {
+  return `${track.artist} - ${track.title}`.toLowerCase();
+}
+
+function parseRadioApexNowPlaying(data: RadioApexNowPlayingResponse): NowPlaying {
+  const history =
+    data.songHistory
+      ?.map((item) => normalizeHistoryItem(item))
+      .filter((item): item is SongHistoryItem => Boolean(item))
+      .slice(0, 5) ?? [];
+
+  return {
+    title: normalizeTrackText(data.title) || defaultNowPlaying.title,
+    artist: normalizeTrackText(data.artist) || defaultNowPlaying.artist,
+    isLive: Boolean(data.isLive),
+    listeners: typeof data.listeners === 'number' ? data.listeners : 0,
+    coverArt: data.coverArt || null,
+    songHistory: history,
+  };
+}
+
+function parseAzuraNowPlaying(data: AzuraCastResponse): NowPlaying {
   const current = normalizeSong(data.now_playing?.song);
   const listeners = data.listeners;
   const listenerCount =
@@ -363,8 +413,22 @@ function parseNowPlaying(data: AzuraCastResponse): NowPlaying {
     listeners: listenerCount,
     coverArt: data.now_playing?.song?.art || null,
     songHistory:
-      data.song_history?.slice(0, 4).map((item) => normalizeSong(item.song)) ?? [],
+      data.song_history?.slice(0, 5).map((item) => normalizeSong(item.song)) ?? [],
   };
+}
+
+function isRadioApexNowPlayingResponse(
+  data: AzuraCastResponse | RadioApexNowPlayingResponse
+): data is RadioApexNowPlayingResponse {
+  return 'songHistory' in data || 'coverArt' in data || 'title' in data;
+}
+
+function parseNowPlaying(
+  data: AzuraCastResponse | RadioApexNowPlayingResponse
+): NowPlaying {
+  return isRadioApexNowPlayingResponse(data)
+    ? parseRadioApexNowPlaying(data)
+    : parseAzuraNowPlaying(data);
 }
 
 async function fetchNowPlaying(): Promise<NowPlaying> {
@@ -375,11 +439,24 @@ async function fetchNowPlaying(): Promise<NowPlaying> {
       throw new Error(`Now playing request failed: ${response.status}`);
     }
 
-    return parseNowPlaying((await response.json()) as AzuraCastResponse);
+    return parseNowPlaying((await response.json()) as RadioApexNowPlayingResponse);
   } catch (error) {
-    console.warn('Now playing data could not be loaded.', error);
-    return defaultNowPlaying;
+    console.warn('Radio Apex metadata could not be loaded.', error);
   }
+
+  try {
+    const fallbackResponse = await fetch(AZURACAST_NOW_PLAYING_URL);
+
+    if (!fallbackResponse.ok) {
+      throw new Error(`Now playing fallback request failed: ${fallbackResponse.status}`);
+    }
+
+    return parseNowPlaying((await fallbackResponse.json()) as AzuraCastResponse);
+  } catch (error) {
+    console.warn('Fallback now playing data could not be loaded.', error);
+  }
+
+  return defaultNowPlaying;
 }
 
 function transformDjDoc(doc: DocumentData): DJProfile {
@@ -597,6 +674,8 @@ export default function App() {
   const loadedStreamQuality = useRef<StreamQuality | null>(null);
   const streamLoadingStartedAt = useRef(0);
   const storyShareCardRef = useRef<View>(null);
+  const lastNowPlayingTrack = useRef<SongHistoryItem | null>(null);
+  const localTrackHistory = useRef<SongHistoryItem[]>([]);
   const particleAnimations = useRef(particles.map(() => new Animated.Value(0))).current;
   const waveAnimations = useRef(soundwaveBars.map(() => new Animated.Value(0))).current;
 
@@ -655,7 +734,36 @@ export default function App() {
 
   const refreshNowPlaying = useCallback(async () => {
     const payload = await fetchNowPlaying();
-    setNowPlaying(payload);
+    const currentTrack = normalizeHistoryItem({
+      artist: payload.artist,
+      title: payload.title,
+    });
+
+    if (currentTrack) {
+      const previousTrack = lastNowPlayingTrack.current;
+
+      if (
+        previousTrack &&
+        getSongHistoryKey(previousTrack) !== getSongHistoryKey(currentTrack)
+      ) {
+        localTrackHistory.current = [
+          previousTrack,
+          ...localTrackHistory.current.filter(
+            (item) => getSongHistoryKey(item) !== getSongHistoryKey(previousTrack)
+          ),
+        ].slice(0, 5);
+      }
+
+      lastNowPlayingTrack.current = currentTrack;
+    }
+
+    setNowPlaying({
+      ...payload,
+      songHistory:
+        payload.songHistory.length > 0
+          ? payload.songHistory.slice(0, 5)
+          : localTrackHistory.current,
+    });
     setIsMetadataLoading(false);
   }, []);
 
@@ -1642,6 +1750,8 @@ function HomeScreen({
         </View>
       </View>
 
+      <RecentTracks tracks={nowPlaying.songHistory} />
+
       <View style={styles.socialRow}>
         {socialLinks.map((social) => {
           const Icon = social.icon;
@@ -1686,6 +1796,35 @@ function HomeScreen({
         </Pressable>
       </View>
     </>
+  );
+}
+
+function RecentTracks({ tracks }: { tracks: SongHistoryItem[] }) {
+  const recentTracks = tracks.slice(0, 5);
+
+  if (recentTracks.length === 0) {
+    return null;
+  }
+
+  return (
+    <View pointerEvents="none" style={styles.recentTracksPanel}>
+      <Text style={styles.recentTracksTitle}>RECENTLY PLAYED</Text>
+      <View style={styles.recentTracksList}>
+        {recentTracks.map((track, index) => (
+          <View key={`${track.artist}-${track.title}-${index}`} style={styles.recentTrackRow}>
+            <Text style={styles.recentTrackIndex}>{index + 1}</Text>
+            <View style={styles.recentTrackTextBlock}>
+              <Text numberOfLines={1} style={styles.recentTrackTitle}>
+                {track.title}
+              </Text>
+              <Text numberOfLines={1} style={styles.recentTrackArtist}>
+                {track.artist}
+              </Text>
+            </View>
+          </View>
+        ))}
+      </View>
+    </View>
   );
 }
 
@@ -4115,6 +4254,67 @@ const styles = StyleSheet.create({
     textShadowColor: 'rgba(253,29,53,0.82)',
     textShadowOffset: { height: 0, width: 0 },
     textShadowRadius: 10,
+  },
+  recentTracksPanel: {
+    backgroundColor: 'rgba(5,5,9,0.42)',
+    borderColor: 'rgba(255,255,255,0.08)',
+    borderRadius: 18,
+    borderWidth: 1,
+    bottom: 160,
+    gap: 8,
+    left: 22,
+    maxHeight: 142,
+    overflow: 'hidden',
+    paddingHorizontal: 14,
+    paddingVertical: 11,
+    position: 'absolute',
+    right: 22,
+    zIndex: 3,
+  },
+  recentTracksTitle: {
+    color: 'rgba(255,255,255,0.46)',
+    fontFamily: 'Antonio_400Regular',
+    fontSize: 10,
+    letterSpacing: 3.2,
+  },
+  recentTracksList: {
+    gap: 6,
+  },
+  recentTrackRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 10,
+    minHeight: 17,
+  },
+  recentTrackIndex: {
+    color: 'rgba(253,29,53,0.72)',
+    fontFamily: 'Antonio_400Regular',
+    fontSize: 10,
+    lineHeight: 13,
+    textAlign: 'center',
+    width: 12,
+  },
+  recentTrackTextBlock: {
+    alignItems: 'center',
+    flex: 1,
+    flexDirection: 'row',
+    gap: 8,
+    minWidth: 0,
+  },
+  recentTrackTitle: {
+    color: 'rgba(255,255,255,0.78)',
+    flex: 1,
+    fontFamily: 'Roboto_500Medium',
+    fontSize: 12,
+    lineHeight: 16,
+  },
+  recentTrackArtist: {
+    color: 'rgba(255,255,255,0.46)',
+    flex: 0.75,
+    fontFamily: 'Roboto_400Regular',
+    fontSize: 11,
+    lineHeight: 15,
+    textAlign: 'right',
   },
   transparentButtonFace: {
     alignItems: 'center',
