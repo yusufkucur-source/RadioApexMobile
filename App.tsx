@@ -176,24 +176,38 @@ const socialLinks = [
   },
 ];
 
-const menuItems = ['Home', 'DJs', 'LINE UP', 'About', 'Contact'];
+type NavIcon = (props: SocialIconProps) => ReactNode;
 
-function getScreenForMenuItem(item: string): AppScreen | null {
-  switch (item) {
-    case 'Home':
-      return 'home';
-    case 'DJs':
-      return 'djs';
-    case 'LINE UP':
-      return 'lineup';
-    case 'About':
-      return 'about';
-    case 'Contact':
-      return 'contact';
-    default:
-      return null;
-  }
-}
+const primaryNavItems: Array<{
+  icon: NavIcon;
+  label: string;
+  screen: AppScreen | null;
+}> = [
+  { label: 'Home', screen: 'home', icon: HomeIcon },
+  { label: 'DJs', screen: 'djs', icon: DjsIcon },
+  { label: 'Line Up', screen: 'lineup', icon: LineupIcon },
+  { label: 'More', screen: null, icon: MoreIcon },
+];
+
+const moreMenuItems: Array<{
+  icon: NavIcon;
+  label: string;
+  screen: AppScreen;
+  subtitle: string;
+}> = [
+  {
+    label: 'About',
+    screen: 'about',
+    subtitle: 'Station story and broadcast profile',
+    icon: InfoIcon,
+  },
+  {
+    label: 'Contact',
+    screen: 'contact',
+    subtitle: 'Booking, support, and collaboration',
+    icon: ContactIcon,
+  },
+];
 
 const fallbackDjs: DJProfile[] = [
   {
@@ -1040,13 +1054,9 @@ export default function App() {
     []
   );
 
-  const handleMenuItemPress = useCallback(
-    (item: string) => {
-      const nextScreen = getScreenForMenuItem(item);
-
-      closeMenu();
-
-      if (!nextScreen || nextScreen === activeScreen) {
+  const navigateToScreen = useCallback(
+    (nextScreen: AppScreen) => {
+      if (nextScreen === activeScreen) {
         return;
       }
 
@@ -1060,7 +1070,28 @@ export default function App() {
         useNativeDriver: true,
       }).start();
     },
-    [activeScreen, closeMenu, screenProgress]
+    [activeScreen, screenProgress]
+  );
+
+  const handlePrimaryNavPress = useCallback(
+    (screen: AppScreen | null) => {
+      if (!screen) {
+        openMenu();
+        return;
+      }
+
+      closeMenu();
+      navigateToScreen(screen);
+    },
+    [closeMenu, navigateToScreen, openMenu]
+  );
+
+  const handleMoreItemPress = useCallback(
+    (screen: AppScreen) => {
+      closeMenu();
+      navigateToScreen(screen);
+    },
+    [closeMenu, navigateToScreen]
   );
 
   const pulseScale = pulseRing.interpolate({
@@ -1088,14 +1119,13 @@ export default function App() {
   const artistFontSize = viewportWidth < 390 ? 12 : viewportWidth < 600 ? 14 : 16;
   const turntableHeight = Math.max(viewportHeight, viewportWidth) * 1.2;
   const turntableWidth = turntableHeight * (2532.53 / 2194.45);
-  const drawerWidth = Math.min(304, viewportWidth * 0.78);
   const menuOpacity = menuProgress.interpolate({
     inputRange: [0, 1],
     outputRange: [0, 1],
   });
-  const menuTranslateX = menuProgress.interpolate({
+  const menuTranslateY = menuProgress.interpolate({
     inputRange: [0, 1],
-    outputRange: [drawerWidth, 0],
+    outputRange: [220, 0],
   });
   const screenTranslateY = screenProgress.interpolate({
     inputRange: [0, 1],
@@ -1187,20 +1217,6 @@ export default function App() {
               <AplexLogoRed width={126} height={54} />
             </View>
 
-            <Pressable
-              accessibilityLabel="Menuyu ac"
-              accessibilityRole="button"
-              onPress={openMenu}
-              style={({ pressed }) => [
-                styles.menuButton,
-                pressed && styles.menuButtonPressed,
-              ]}
-            >
-              <View style={styles.menuLine} />
-              <View style={styles.menuLine} />
-              <View style={styles.menuLine} />
-            </Pressable>
-
             <Animated.View
               style={[
                 styles.screenStage,
@@ -1271,24 +1287,23 @@ export default function App() {
               <View style={styles.menuLayer}>
                 <Animated.View style={[styles.menuScrim, { opacity: menuOpacity }]}>
                   <Pressable
-                    accessibilityLabel="Menu disina dokunarak kapat"
+                    accessibilityLabel="Close more options"
                     onPress={closeMenu}
                     style={StyleSheet.absoluteFill}
                   />
                 </Animated.View>
                 <Animated.View
                   style={[
-                    styles.menuDrawer,
+                    styles.moreSheet,
                     {
-                      transform: [{ translateX: menuTranslateX }],
-                      width: drawerWidth,
+                      transform: [{ translateY: menuTranslateY }],
                     },
                   ]}
                 >
                   <View style={styles.menuHeader}>
-                    <Text style={styles.menuTitle}>MENU</Text>
+                    <Text style={styles.menuTitle}>MORE</Text>
                     <Pressable
-                      accessibilityLabel="Menuyu kapat"
+                      accessibilityLabel="Close more options"
                       accessibilityRole="button"
                       onPress={closeMenu}
                       style={({ pressed }) => [
@@ -1301,38 +1316,58 @@ export default function App() {
                   </View>
 
                   <View style={styles.menuList}>
-                    {menuItems.map((item) => {
-                      const isActive = getScreenForMenuItem(item) === activeScreen;
+                    {moreMenuItems.map((item) => {
+                      const isActive = item.screen === activeScreen;
+                      const Icon = item.icon;
 
                       return (
                         <Pressable
-                          key={item}
-                          accessibilityLabel={item}
+                          key={item.screen}
+                          accessibilityLabel={item.label}
                           accessibilityRole="button"
-                          onPress={() => handleMenuItemPress(item)}
+                          onPress={() => handleMoreItemPress(item.screen)}
                           style={({ pressed }) => [
                             styles.menuItem,
                             isActive && styles.menuItemActive,
                             pressed && styles.menuItemPressed,
                           ]}
                         >
-                          <Text
+                          <View
                             style={[
-                              styles.menuItemText,
-                              isActive && styles.menuItemTextActive,
+                              styles.moreMenuIcon,
+                              isActive && styles.moreMenuIconActive,
                             ]}
                           >
-                            {item}
-                          </Text>
+                            <Icon
+                              color={isActive ? '#fd1d35' : 'rgba(255,255,255,0.62)'}
+                              size={18}
+                              strokeWidth={2}
+                            />
+                          </View>
+                          <View style={styles.moreMenuTextBlock}>
+                            <Text
+                              style={[
+                                styles.menuItemText,
+                                isActive && styles.menuItemTextActive,
+                              ]}
+                            >
+                              {item.label}
+                            </Text>
+                            <Text style={styles.moreMenuItemSubtitle}>{item.subtitle}</Text>
+                          </View>
                         </Pressable>
                       );
                     })}
                   </View>
-
-                  <Text style={styles.menuFooter}>RADIO APEX</Text>
                 </Animated.View>
               </View>
             ) : null}
+
+            <BottomNavigation
+              activeScreen={activeScreen}
+              isMoreOpen={isMenuVisible}
+              onPressItem={handlePrimaryNavPress}
+            />
 
             <ShareOptionsSheet
               isStoryShareLoading={isStoryShareLoading}
@@ -1347,6 +1382,59 @@ export default function App() {
       </LinearGradient>
       </ImageBackground>
     </SafeAreaProvider>
+  );
+}
+
+type BottomNavigationProps = {
+  activeScreen: AppScreen;
+  isMoreOpen: boolean;
+  onPressItem: (screen: AppScreen | null) => void;
+};
+
+function BottomNavigation({
+  activeScreen,
+  isMoreOpen,
+  onPressItem,
+}: BottomNavigationProps) {
+  return (
+    <View style={styles.bottomNav}>
+      {primaryNavItems.map((item) => {
+        const isActive =
+          item.screen === activeScreen ||
+          (!item.screen && (isMoreOpen || activeScreen === 'about' || activeScreen === 'contact'));
+        const Icon = item.icon;
+
+        return (
+          <Pressable
+            key={item.label}
+            accessibilityLabel={item.label}
+            accessibilityRole="button"
+            accessibilityState={{ selected: isActive }}
+            onPress={() => onPressItem(item.screen)}
+            style={({ pressed }) => [
+              styles.bottomNavItem,
+              isActive && styles.bottomNavItemActive,
+              pressed && styles.bottomNavItemPressed,
+            ]}
+          >
+            <Icon
+              color={isActive ? '#fd1d35' : 'rgba(255,255,255,0.58)'}
+              size={20}
+              strokeWidth={2}
+            />
+            <Text
+              numberOfLines={1}
+              style={[
+                styles.bottomNavLabel,
+                isActive && styles.bottomNavLabelActive,
+              ]}
+            >
+              {item.label}
+            </Text>
+          </Pressable>
+        );
+      })}
+    </View>
   );
 }
 
@@ -2778,6 +2866,112 @@ type SocialIconProps = {
   strokeWidth?: number;
 };
 
+function HomeIcon({ color, size = 20, strokeWidth = 2 }: SocialIconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Path
+        d="M4 11.2L12 4L20 11.2V20H15V14H9V20H4V11.2Z"
+        stroke={color}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={strokeWidth}
+      />
+    </Svg>
+  );
+}
+
+function DjsIcon({ color, size = 20, strokeWidth = 2 }: SocialIconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Circle cx={9} cy={8} r={3} stroke={color} strokeWidth={strokeWidth} />
+      <Path
+        d="M3.8 19C4.5 15.9 6.2 14.4 9 14.4C11.8 14.4 13.5 15.9 14.2 19"
+        stroke={color}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={strokeWidth}
+      />
+      <Circle cx={17} cy={9} r={2.4} stroke={color} strokeWidth={strokeWidth} />
+      <Path
+        d="M15.2 15.2C17.8 15.1 19.5 16.3 20.2 19"
+        stroke={color}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={strokeWidth}
+      />
+    </Svg>
+  );
+}
+
+function LineupIcon({ color, size = 20, strokeWidth = 2 }: SocialIconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Rect
+        x={4}
+        y={5}
+        width={16}
+        height={15}
+        rx={2.5}
+        stroke={color}
+        strokeWidth={strokeWidth}
+      />
+      <Path
+        d="M8 3V7M16 3V7M4 10H20M8 14H9M12 14H13M16 14H17"
+        stroke={color}
+        strokeLinecap="round"
+        strokeWidth={strokeWidth}
+      />
+    </Svg>
+  );
+}
+
+function MoreIcon({ color, size = 20, strokeWidth = 2 }: SocialIconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Circle cx={5} cy={12} r={1.5} fill={color} />
+      <Circle cx={12} cy={12} r={1.5} fill={color} />
+      <Circle cx={19} cy={12} r={1.5} fill={color} />
+    </Svg>
+  );
+}
+
+function InfoIcon({ color, size = 20, strokeWidth = 2 }: SocialIconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Circle cx={12} cy={12} r={8} stroke={color} strokeWidth={strokeWidth} />
+      <Path
+        d="M12 11V16M12 8H12.01"
+        stroke={color}
+        strokeLinecap="round"
+        strokeWidth={strokeWidth}
+      />
+    </Svg>
+  );
+}
+
+function ContactIcon({ color, size = 20, strokeWidth = 2 }: SocialIconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Rect
+        x={4}
+        y={6}
+        width={16}
+        height={12}
+        rx={2}
+        stroke={color}
+        strokeWidth={strokeWidth}
+      />
+      <Path
+        d="M5 8L12 13L19 8"
+        stroke={color}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={strokeWidth}
+      />
+    </Svg>
+  );
+}
+
 function InstagramIcon({ color, size = 20, strokeWidth = 2 }: SocialIconProps) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
@@ -2954,35 +3148,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     left: 22,
     position: 'absolute',
-    right: 86,
+    right: 22,
     top: 32,
     zIndex: 4,
-  },
-  menuButton: {
-    alignItems: 'center',
-    backgroundColor: 'rgba(255,255,255,0.06)',
-    borderColor: 'rgba(255,255,255,0.10)',
-    borderRadius: 999,
-    borderWidth: 1,
-    gap: 4,
-    height: 42,
-    justifyContent: 'center',
-    position: 'absolute',
-    right: 22,
-    top: 36,
-    width: 42,
-    zIndex: 5,
-  },
-  menuButtonPressed: {
-    backgroundColor: 'rgba(253,29,53,0.10)',
-    borderColor: 'rgba(253,29,53,0.45)',
-    transform: [{ scale: 0.96 }],
-  },
-  menuLine: {
-    backgroundColor: 'rgba(255,255,255,0.72)',
-    borderRadius: 999,
-    height: 1.5,
-    width: 17,
   },
   menuLayer: {
     bottom: -24,
@@ -2993,29 +3161,31 @@ const styles = StyleSheet.create({
     zIndex: 20,
   },
   menuScrim: {
-    backgroundColor: 'rgba(0,0,0,0.52)',
+    backgroundColor: 'rgba(0,0,0,0.42)',
     bottom: 0,
     left: 0,
     position: 'absolute',
     right: 0,
     top: 0,
   },
-  menuDrawer: {
-    backgroundColor: 'rgba(8,8,14,0.96)',
+  moreSheet: {
+    backgroundColor: 'rgba(8,8,14,0.98)',
     borderColor: 'rgba(255,255,255,0.10)',
-    borderLeftWidth: 1,
-    bottom: 0,
-    paddingHorizontal: 22,
-    paddingTop: 52,
+    borderRadius: 22,
+    borderWidth: 1,
+    bottom: 102,
+    left: 22,
+    paddingBottom: 18,
+    paddingHorizontal: 18,
+    paddingTop: 16,
     position: 'absolute',
     right: 22,
-    top: 0,
   },
   menuHeader: {
     alignItems: 'center',
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: 34,
+    marginBottom: 14,
     width: '100%',
   },
   menuTitle: {
@@ -3040,39 +3210,59 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(253,29,53,0.45)',
   },
   menuList: {
-    gap: 12,
+    gap: 10,
   },
   menuItem: {
-    borderBottomColor: 'rgba(255,255,255,0.09)',
-    borderBottomWidth: 1,
-    paddingVertical: 17,
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.055)',
+    borderColor: 'rgba(255,255,255,0.10)',
+    borderRadius: 14,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 12,
+    minHeight: 64,
+    paddingHorizontal: 13,
+    paddingVertical: 12,
   },
   menuItemActive: {
-    borderBottomColor: 'rgba(253,29,53,0.55)',
+    backgroundColor: 'rgba(253,29,53,0.10)',
+    borderColor: 'rgba(253,29,53,0.52)',
   },
   menuItemPressed: {
-    borderBottomColor: 'rgba(253,29,53,0.45)',
-    transform: [{ translateX: 4 }],
+    transform: [{ scale: 0.99 }],
   },
   menuItemText: {
     color: '#ffffff',
     fontFamily: 'Roboto_500Medium',
     fontSize: 15,
-    letterSpacing: 1.5,
-    textTransform: 'uppercase',
+    lineHeight: 20,
   },
   menuItemTextActive: {
     color: '#fd1d35',
   },
-  menuFooter: {
-    bottom: 30,
-    color: 'rgba(255,255,255,0.34)',
-    fontFamily: 'Antonio_400Regular',
-    fontSize: 10,
-    left: 22,
-    letterSpacing: 4,
-    position: 'absolute',
-    textTransform: 'uppercase',
+  moreMenuIcon: {
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    borderColor: 'rgba(255,255,255,0.10)',
+    borderRadius: 999,
+    borderWidth: 1,
+    height: 40,
+    justifyContent: 'center',
+    width: 40,
+  },
+  moreMenuIconActive: {
+    backgroundColor: 'rgba(253,29,53,0.12)',
+    borderColor: 'rgba(253,29,53,0.44)',
+  },
+  moreMenuTextBlock: {
+    flex: 1,
+    gap: 2,
+  },
+  moreMenuItemSubtitle: {
+    color: 'rgba(255,255,255,0.54)',
+    fontFamily: 'Roboto_400Regular',
+    fontSize: 12,
+    lineHeight: 17,
   },
   livePill: {
     alignItems: 'center',
@@ -3106,22 +3296,22 @@ const styles = StyleSheet.create({
     zIndex: 2,
   },
   djsContent: {
-    paddingBottom: 54,
+    paddingBottom: 144,
     paddingHorizontal: 22,
     paddingTop: 168,
   },
   lineupContent: {
-    paddingBottom: 54,
+    paddingBottom: 144,
     paddingHorizontal: 22,
     paddingTop: 168,
   },
   aboutContent: {
-    paddingBottom: 56,
+    paddingBottom: 146,
     paddingHorizontal: 22,
     paddingTop: 168,
   },
   contactContent: {
-    paddingBottom: 56,
+    paddingBottom: 146,
     paddingHorizontal: 22,
     paddingTop: 168,
   },
@@ -4023,14 +4213,63 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 18,
   },
+  bottomNav: {
+    alignItems: 'center',
+    backgroundColor: 'rgba(8,8,14,0.88)',
+    borderColor: 'rgba(255,255,255,0.12)',
+    borderRadius: 24,
+    borderWidth: 1,
+    bottom: 12,
+    elevation: 18,
+    flexDirection: 'row',
+    gap: 4,
+    height: 74,
+    justifyContent: 'space-between',
+    left: 0,
+    paddingHorizontal: 8,
+    position: 'absolute',
+    right: 0,
+    shadowColor: '#000000',
+    shadowOffset: { height: 10, width: 0 },
+    shadowOpacity: 0.34,
+    shadowRadius: 24,
+    zIndex: 8,
+  },
+  bottomNavItem: {
+    alignItems: 'center',
+    borderColor: 'transparent',
+    borderRadius: 18,
+    borderWidth: 1,
+    flex: 1,
+    gap: 5,
+    height: 58,
+    justifyContent: 'center',
+    minWidth: 0,
+  },
+  bottomNavItemActive: {
+    backgroundColor: 'rgba(253,29,53,0.10)',
+    borderColor: 'rgba(253,29,53,0.34)',
+  },
+  bottomNavItemPressed: {
+    transform: [{ scale: 0.97 }],
+  },
+  bottomNavLabel: {
+    color: 'rgba(255,255,255,0.58)',
+    fontFamily: 'Roboto_700Bold',
+    fontSize: 10,
+    lineHeight: 13,
+  },
+  bottomNavLabelActive: {
+    color: '#ffffff',
+  },
   socialRow: {
-    bottom: 0,
+    bottom: 100,
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 16,
     justifyContent: 'center',
     left: 0,
-    paddingBottom: 20,
+    paddingBottom: 0,
     paddingHorizontal: 22,
     position: 'absolute',
     right: 0,
