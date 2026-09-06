@@ -1790,7 +1790,7 @@ function RecentTracks({ tracks }: { tracks: SongHistoryItem[] }) {
           <Text style={styles.recentTracksTitle}>RECENTLY PLAYED</Text>
           <Text style={styles.recentTracksCount}>{recentTracks.length}</Text>
         </View>
-        <RecentTrackRow index={0} track={recentTracks[0]} />
+        <RecentTrackRow track={recentTracks[0]} />
       </Pressable>
 
       <Modal
@@ -1828,7 +1828,6 @@ function RecentTracks({ tracks }: { tracks: SongHistoryItem[] }) {
               {recentTracks.map((track, index) => (
                 <RecentTrackRow
                   key={`${track.artist}-${track.title}-${index}`}
-                  index={index}
                   track={track}
                 />
               ))}
@@ -1840,10 +1839,9 @@ function RecentTracks({ tracks }: { tracks: SongHistoryItem[] }) {
   );
 }
 
-function RecentTrackRow({ index, track }: { index: number; track: SongHistoryItem }) {
+function RecentTrackRow({ track }: { track: SongHistoryItem }) {
   return (
     <View style={styles.recentTrackRow}>
-      <Text style={styles.recentTrackIndex}>{index + 1}</Text>
       <View style={styles.recentTrackTextBlock}>
         <Text numberOfLines={1} style={styles.recentTrackTitle}>
           {track.title}
@@ -4374,14 +4372,6 @@ const styles = StyleSheet.create({
     minHeight: 38,
     paddingHorizontal: 10,
     paddingVertical: 8,
-  },
-  recentTrackIndex: {
-    color: 'rgba(253,29,53,0.72)',
-    fontFamily: 'Antonio_400Regular',
-    fontSize: 11,
-    lineHeight: 14,
-    textAlign: 'center',
-    width: 12,
   },
   recentTrackTextBlock: {
     alignItems: 'center',
