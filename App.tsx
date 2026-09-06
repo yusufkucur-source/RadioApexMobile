@@ -3169,7 +3169,7 @@ const styles = StyleSheet.create({
     top: 0,
   },
   moreSheet: {
-    backgroundColor: 'rgba(8,8,14,0.98)',
+    backgroundColor: 'rgba(8,8,14,0.86)',
     borderColor: 'rgba(255,255,255,0.10)',
     borderRadius: 22,
     borderWidth: 1,
@@ -4215,7 +4215,7 @@ const styles = StyleSheet.create({
   },
   bottomNav: {
     alignItems: 'center',
-    backgroundColor: 'rgba(8,8,14,0.88)',
+    backgroundColor: 'rgba(8,8,14,0.66)',
     borderColor: 'rgba(255,255,255,0.12)',
     borderRadius: 24,
     borderWidth: 1,
@@ -4231,7 +4231,7 @@ const styles = StyleSheet.create({
     right: 0,
     shadowColor: '#000000',
     shadowOffset: { height: 10, width: 0 },
-    shadowOpacity: 0.34,
+    shadowOpacity: 0.26,
     shadowRadius: 24,
     zIndex: 8,
   },
