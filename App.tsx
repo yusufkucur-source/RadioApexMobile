@@ -1769,32 +1769,88 @@ function HomeScreen({
 
 function RecentTracks({ tracks }: { tracks: SongHistoryItem[] }) {
   const recentTracks = tracks.slice(0, 5);
-  const panelHeight = 50 + recentTracks.length * 24;
+  const [isExpanded, setIsExpanded] = useState(false);
 
   if (recentTracks.length === 0) {
     return null;
   }
 
   return (
-    <View
-      pointerEvents="none"
-      style={[styles.recentTracksPanel, { height: panelHeight }]}
-    >
-      <Text style={styles.recentTracksTitle}>RECENTLY PLAYED</Text>
-      <View style={styles.recentTracksList}>
-        {recentTracks.map((track, index) => (
-          <View key={`${track.artist}-${track.title}-${index}`} style={styles.recentTrackRow}>
-            <Text style={styles.recentTrackIndex}>{index + 1}</Text>
-            <View style={styles.recentTrackTextBlock}>
-              <Text numberOfLines={1} style={styles.recentTrackTitle}>
-                {track.title}
-              </Text>
-              <Text numberOfLines={1} style={styles.recentTrackArtist}>
-                {track.artist}
-              </Text>
+    <>
+      <Pressable
+        accessibilityLabel="Recently played tracks"
+        accessibilityRole="button"
+        onPress={() => setIsExpanded(true)}
+        style={({ pressed }) => [
+          styles.recentTracksPanel,
+          pressed && styles.recentTracksPanelPressed,
+        ]}
+      >
+        <View style={styles.recentTracksHeaderRow}>
+          <Text style={styles.recentTracksTitle}>RECENTLY PLAYED</Text>
+          <Text style={styles.recentTracksCount}>{recentTracks.length}</Text>
+        </View>
+        <RecentTrackRow index={0} track={recentTracks[0]} />
+      </Pressable>
+
+      <Modal
+        animationType="fade"
+        onRequestClose={() => setIsExpanded(false)}
+        statusBarTranslucent
+        transparent
+        visible={isExpanded}
+      >
+        <View style={styles.recentTracksOverlay}>
+          <Pressable
+            accessibilityLabel="Close recently played tracks"
+            onPress={() => setIsExpanded(false)}
+            style={StyleSheet.absoluteFill}
+          />
+          <View style={styles.recentTracksExpandedPanel}>
+            <View style={styles.recentTracksExpandedHeader}>
+              <View>
+                <Text style={styles.recentTracksTitle}>RECENTLY PLAYED</Text>
+                <Text style={styles.recentTracksExpandedSubtitle}>LAST 5 TRACKS</Text>
+              </View>
+              <Pressable
+                accessibilityLabel="Close recently played tracks"
+                accessibilityRole="button"
+                onPress={() => setIsExpanded(false)}
+                style={({ pressed }) => [
+                  styles.recentTracksCloseButton,
+                  pressed && styles.menuCloseButtonPressed,
+                ]}
+              >
+                <CloseIcon color="rgba(255,255,255,0.72)" size={18} strokeWidth={2} />
+              </Pressable>
+            </View>
+            <View style={styles.recentTracksExpandedList}>
+              {recentTracks.map((track, index) => (
+                <RecentTrackRow
+                  key={`${track.artist}-${track.title}-${index}`}
+                  index={index}
+                  track={track}
+                />
+              ))}
             </View>
           </View>
-        ))}
+        </View>
+      </Modal>
+    </>
+  );
+}
+
+function RecentTrackRow({ index, track }: { index: number; track: SongHistoryItem }) {
+  return (
+    <View style={styles.recentTrackRow}>
+      <Text style={styles.recentTrackIndex}>{index + 1}</Text>
+      <View style={styles.recentTrackTextBlock}>
+        <Text numberOfLines={1} style={styles.recentTrackTitle}>
+          {track.title}
+        </Text>
+        <Text numberOfLines={1} style={styles.recentTrackArtist}>
+          {track.artist}
+        </Text>
       </View>
     </View>
   );
@@ -4233,9 +4289,9 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     borderWidth: 1,
     bottom: 160,
-    gap: 8,
+    gap: 7,
+    height: 82,
     left: 22,
-    maxHeight: 142,
     overflow: 'hidden',
     paddingHorizontal: 14,
     paddingVertical: 11,
@@ -4243,26 +4299,87 @@ const styles = StyleSheet.create({
     right: 22,
     zIndex: 3,
   },
+  recentTracksPanelPressed: {
+    backgroundColor: 'rgba(253,29,53,0.08)',
+    borderColor: 'rgba(253,29,53,0.32)',
+    transform: [{ scale: 0.99 }],
+  },
+  recentTracksHeaderRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
   recentTracksTitle: {
     color: 'rgba(255,255,255,0.46)',
     fontFamily: 'Antonio_400Regular',
     fontSize: 10,
     letterSpacing: 3.2,
   },
-  recentTracksList: {
-    gap: 6,
+  recentTracksCount: {
+    color: 'rgba(253,29,53,0.82)',
+    fontFamily: 'Antonio_400Regular',
+    fontSize: 10,
+    letterSpacing: 2,
+  },
+  recentTracksOverlay: {
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.72)',
+    flex: 1,
+    justifyContent: 'center',
+    paddingHorizontal: 22,
+  },
+  recentTracksExpandedPanel: {
+    backgroundColor: 'rgba(8,8,14,0.94)',
+    borderColor: 'rgba(255,255,255,0.12)',
+    borderRadius: 22,
+    borderWidth: 1,
+    gap: 18,
+    maxWidth: 430,
+    padding: 18,
+    width: '100%',
+  },
+  recentTracksExpandedHeader: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  recentTracksExpandedSubtitle: {
+    color: '#ffffff',
+    fontFamily: 'Roboto_500Medium',
+    fontSize: 20,
+    lineHeight: 26,
+    marginTop: 4,
+  },
+  recentTracksExpandedList: {
+    gap: 13,
+  },
+  recentTracksCloseButton: {
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    borderColor: 'rgba(255,255,255,0.10)',
+    borderRadius: 999,
+    borderWidth: 1,
+    height: 40,
+    justifyContent: 'center',
+    width: 40,
   },
   recentTrackRow: {
     alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.035)',
+    borderColor: 'rgba(255,255,255,0.07)',
+    borderRadius: 13,
+    borderWidth: 1,
     flexDirection: 'row',
     gap: 10,
-    minHeight: 17,
+    minHeight: 38,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
   },
   recentTrackIndex: {
     color: 'rgba(253,29,53,0.72)',
     fontFamily: 'Antonio_400Regular',
-    fontSize: 10,
-    lineHeight: 13,
+    fontSize: 11,
+    lineHeight: 14,
     textAlign: 'center',
     width: 12,
   },
