@@ -377,10 +377,6 @@ function normalizeHistoryItem(item?: Partial<SongHistoryItem>): SongHistoryItem 
   };
 }
 
-function getSongHistoryKey(track: SongHistoryItem) {
-  return `${track.artist} - ${track.title}`.toLowerCase();
-}
-
 function parseRadioApexNowPlaying(data: RadioApexNowPlayingResponse): NowPlaying {
   const history =
     data.songHistory
@@ -674,8 +670,6 @@ export default function App() {
   const loadedStreamQuality = useRef<StreamQuality | null>(null);
   const streamLoadingStartedAt = useRef(0);
   const storyShareCardRef = useRef<View>(null);
-  const lastNowPlayingTrack = useRef<SongHistoryItem | null>(null);
-  const localTrackHistory = useRef<SongHistoryItem[]>([]);
   const particleAnimations = useRef(particles.map(() => new Animated.Value(0))).current;
   const waveAnimations = useRef(soundwaveBars.map(() => new Animated.Value(0))).current;
 
@@ -734,35 +728,9 @@ export default function App() {
 
   const refreshNowPlaying = useCallback(async () => {
     const payload = await fetchNowPlaying();
-    const currentTrack = normalizeHistoryItem({
-      artist: payload.artist,
-      title: payload.title,
-    });
-
-    if (currentTrack) {
-      const previousTrack = lastNowPlayingTrack.current;
-
-      if (
-        previousTrack &&
-        getSongHistoryKey(previousTrack) !== getSongHistoryKey(currentTrack)
-      ) {
-        localTrackHistory.current = [
-          previousTrack,
-          ...localTrackHistory.current.filter(
-            (item) => getSongHistoryKey(item) !== getSongHistoryKey(previousTrack)
-          ),
-        ].slice(0, 5);
-      }
-
-      lastNowPlayingTrack.current = currentTrack;
-    }
-
     setNowPlaying({
       ...payload,
-      songHistory:
-        payload.songHistory.length > 0
-          ? payload.songHistory.slice(0, 5)
-          : localTrackHistory.current,
+      songHistory: payload.songHistory.slice(0, 5),
     });
     setIsMetadataLoading(false);
   }, []);
