@@ -669,7 +669,7 @@ function useRecentTracks() {
     }
 
     const recentTracksQuery = query(
-      collection(db, 'recentTracks'),
+      collection(db, 'trackHistory'),
       orderBy('playedAt', 'desc'),
       limit(5)
     );
