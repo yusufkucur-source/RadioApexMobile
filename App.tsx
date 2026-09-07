@@ -20,7 +20,10 @@ import { initializeApp, getApps, type FirebaseApp } from 'firebase/app';
 import {
   collection,
   getFirestore,
+  limit,
   onSnapshot,
+  orderBy,
+  query,
   type DocumentData,
   type Firestore,
 } from 'firebase/firestore';
@@ -73,6 +76,8 @@ type StreamQuality = '320' | '128';
 type SongHistoryItem = {
   title: string;
   artist: string;
+  coverArt?: string | null;
+  playedAt?: number;
 };
 
 type NowPlaying = {
@@ -480,6 +485,22 @@ function transformLineupDoc(doc: DocumentData): LineupSlot {
   };
 }
 
+function transformRecentTrackDoc(doc: DocumentData): SongHistoryItem | null {
+  const title = normalizeTrackText(doc.title);
+  const artist = normalizeTrackText(doc.artist);
+
+  if (!title || title.toLowerCase() === 'unknown') {
+    return null;
+  }
+
+  return {
+    title,
+    artist: artist || 'Radio Apex',
+    coverArt: typeof doc.coverArt === 'string' ? doc.coverArt : null,
+    playedAt: typeof doc.playedAt === 'number' ? doc.playedAt : undefined,
+  };
+}
+
 function sortDjsAlphabetically(djs: DJProfile[]) {
   return [...djs].sort((a, b) =>
     (a.nickname || a.fullName).localeCompare(b.nickname || b.fullName, 'tr', {
@@ -637,6 +658,42 @@ function useLineup() {
   return { lineup, isLineupLoading };
 }
 
+function useRecentTracks() {
+  const [recentTracks, setRecentTracks] = useState<SongHistoryItem[]>([]);
+
+  useEffect(() => {
+    const db = getFirestoreInstance();
+
+    if (!db) {
+      return;
+    }
+
+    const recentTracksQuery = query(
+      collection(db, 'recentTracks'),
+      orderBy('playedAt', 'desc'),
+      limit(5)
+    );
+
+    const unsubscribe = onSnapshot(
+      recentTracksQuery,
+      (snapshot) => {
+        setRecentTracks(
+          snapshot.docs
+            .map((item) => transformRecentTrackDoc(item.data()))
+            .filter((item): item is SongHistoryItem => Boolean(item))
+        );
+      },
+      (error) => {
+        console.warn('Failed to load recent tracks.', error);
+      }
+    );
+
+    return unsubscribe;
+  }, []);
+
+  return recentTracks;
+}
+
 export default function App() {
   const player = useAudioPlayer(null, {
     updateInterval: 500,
@@ -661,6 +718,7 @@ export default function App() {
   const [isStoryShareLoading, setIsStoryShareLoading] = useState(false);
   const { djs, isDjsLoading } = useDjs();
   const { lineup, isLineupLoading } = useLineup();
+  const recentTracks = useRecentTracks();
 
   const pulseRing = useRef(new Animated.Value(0)).current;
   const glowPulse = useRef(new Animated.Value(0)).current;
@@ -671,6 +729,7 @@ export default function App() {
   const loadedStreamQuality = useRef<StreamQuality | null>(null);
   const streamLoadingStartedAt = useRef(0);
   const storyShareCardRef = useRef<View>(null);
+  const recentTracksRef = useRef<SongHistoryItem[]>([]);
   const particleAnimations = useRef(particles.map(() => new Animated.Value(0))).current;
   const waveAnimations = useRef(soundwaveBars.map(() => new Animated.Value(0))).current;
 
@@ -731,10 +790,26 @@ export default function App() {
     const payload = await fetchNowPlaying();
     setNowPlaying({
       ...payload,
-      songHistory: payload.songHistory.slice(0, 5),
+      songHistory:
+        payload.songHistory.length > 0
+          ? payload.songHistory.slice(0, 5)
+          : recentTracksRef.current,
     });
     setIsMetadataLoading(false);
   }, []);
+
+  useEffect(() => {
+    recentTracksRef.current = recentTracks;
+
+    if (recentTracks.length === 0) {
+      return;
+    }
+
+    setNowPlaying((current) => ({
+      ...current,
+      songHistory: current.songHistory.length > 0 ? current.songHistory : recentTracks,
+    }));
+  }, [recentTracks]);
 
   useEffect(() => {
     void setAudioModeAsync({
@@ -1800,10 +1875,27 @@ function HomeScreen({
 
 function RecentTracks({ tracks }: { tracks: SongHistoryItem[] }) {
   const recentTracks = tracks.slice(0, 5);
+  const hasRecentTracks = recentTracks.length > 0;
   const [isExpanded, setIsExpanded] = useState(false);
 
-  if (recentTracks.length === 0) {
-    return null;
+  if (!hasRecentTracks) {
+    return (
+      <View
+        accessibilityLabel="Recently played tracks are not available"
+        style={[styles.recentTracksPanel, styles.recentTracksPanelMuted]}
+      >
+        <View style={styles.recentTracksHeaderRow}>
+          <Text style={styles.recentTracksTitle}>RECENTLY PLAYED</Text>
+        </View>
+        <RecentTrackRow
+          muted
+          track={{
+            artist: 'Radio Apex',
+            title: 'No recent tracks yet',
+          }}
+        />
+      </View>
+    );
   }
 
   return (
@@ -1869,14 +1961,14 @@ function RecentTracks({ tracks }: { tracks: SongHistoryItem[] }) {
   );
 }
 
-function RecentTrackRow({ track }: { track: SongHistoryItem }) {
+function RecentTrackRow({ muted = false, track }: { muted?: boolean; track: SongHistoryItem }) {
   return (
-    <View style={styles.recentTrackRow}>
+    <View style={[styles.recentTrackRow, muted && styles.recentTrackRowMuted]}>
       <View style={styles.recentTrackTextBlock}>
-        <Text numberOfLines={1} style={styles.recentTrackTitle}>
+        <Text numberOfLines={1} style={[styles.recentTrackTitle, muted && styles.recentTrackTextMuted]}>
           {track.title}
         </Text>
-        <Text numberOfLines={1} style={styles.recentTrackArtist}>
+        <Text numberOfLines={1} style={[styles.recentTrackArtist, muted && styles.recentTrackTextMuted]}>
           {track.artist}
         </Text>
       </View>
@@ -4393,6 +4485,9 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(253,29,53,0.32)',
     transform: [{ scale: 0.99 }],
   },
+  recentTracksPanelMuted: {
+    opacity: 0.72,
+  },
   recentTracksHeaderRow: {
     alignItems: 'center',
     flexDirection: 'row',
@@ -4458,6 +4553,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 8,
   },
+  recentTrackRowMuted: {
+    backgroundColor: 'rgba(255,255,255,0.025)',
+  },
   recentTrackTextBlock: {
     alignItems: 'center',
     flex: 1,
@@ -4479,6 +4577,9 @@ const styles = StyleSheet.create({
     fontSize: 11,
     lineHeight: 15,
     textAlign: 'right',
+  },
+  recentTrackTextMuted: {
+    color: 'rgba(255,255,255,0.42)',
   },
   transparentButtonFace: {
     alignItems: 'center',
