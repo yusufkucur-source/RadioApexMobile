@@ -13,6 +13,8 @@ import {
   Roboto_700Bold,
 } from '@expo-google-fonts/roboto';
 import { useFonts } from 'expo-font';
+import * as Notifications from 'expo-notifications';
+import Constants from 'expo-constants';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Sharing from 'expo-sharing';
 import { StatusBar } from 'expo-status-bar';
@@ -70,6 +72,15 @@ const STORY_SHARE_CARD_HEIGHT = 640;
 const MENU_ANIMATION_DURATION = 340;
 const STREAM_LOADING_MIN_DURATION = 500;
 const STREAM_LOADING_TIMEOUT = 12000;
+
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowBanner: true,
+    shouldShowList: true,
+    shouldPlaySound: true,
+    shouldSetBadge: false,
+  }),
+});
 
 type StreamQuality = '320' | '128';
 
@@ -356,6 +367,38 @@ function getFirestoreInstance(): Firestore | null {
 
 function normalizeTrackText(value?: string) {
   return (value || '').replace(/\s+/g, ' ').trim();
+}
+
+async function registerForPushNotificationsAsync() {
+  if (Platform.OS === 'web') return;
+
+  const existing = await Notifications.getPermissionsAsync();
+  let status = existing.status;
+  if (status !== 'granted') {
+    const requested = await Notifications.requestPermissionsAsync();
+    status = requested.status;
+  }
+  if (status !== 'granted') return;
+
+  if (Platform.OS === 'android') {
+    await Notifications.setNotificationChannelAsync('default', {
+      name: 'Radio Apex',
+      importance: Notifications.AndroidImportance.MAX,
+      sound: 'default',
+    });
+  }
+
+  const projectId =
+    Constants.expoConfig?.extra?.eas?.projectId ??
+    Constants.easConfig?.projectId;
+  if (!projectId) return;
+
+  const token = (await Notifications.getExpoPushTokenAsync({ projectId })).data;
+  await fetch('https://radioapex.com.tr/.netlify/functions/register-push-token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ token, platform: Platform.OS }),
+  });
 }
 
 function normalizeSong(song?: AzuraCastSong): SongHistoryItem {
@@ -717,6 +760,24 @@ export default function App() {
   const [isShareOptionsVisible, setIsShareOptionsVisible] = useState(false);
   const [isStoryShareLoading, setIsStoryShareLoading] = useState(false);
   const { djs, isDjsLoading } = useDjs();
+
+  useEffect(() => {
+    void registerForPushNotificationsAsync().catch((error) => {
+      console.warn('Push notification registration failed.', error);
+    });
+
+    const openNotification = (response: Notifications.NotificationResponse) => {
+      const screen = response.notification.request.content.data?.screen;
+      if (screen === 'djs' || screen === 'lineup' || screen === 'home') {
+        setActiveScreen(screen);
+      }
+    };
+    const subscription = Notifications.addNotificationResponseReceivedListener(openNotification);
+    void Notifications.getLastNotificationResponseAsync().then((response) => {
+      if (response) openNotification(response);
+    });
+    return () => subscription.remove();
+  }, []);
   const { lineup, isLineupLoading } = useLineup();
   const recentTracks = useRecentTracks();
 

@@ -51,7 +51,14 @@
       ],
       "expo-font",
       "expo-asset",
-      "expo-sharing"
+      "expo-sharing",
+      [
+        "expo-notifications",
+        {
+          "color": "#fd1d35",
+          "defaultChannel": "default"
+        }
+      ]
     ],
     "extra": {
       "eas": {
