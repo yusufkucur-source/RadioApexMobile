@@ -14,8 +14,11 @@ function normalizeTrackText(value) {
 }
 
 function parseServiceAccount() {
-  if (process.env.FIREBASE_SERVICE_ACCOUNT) {
-    return JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+  const serviceAccountJson =
+    process.env.FIREBASE_SERVICE_ACCOUNT || process.env.FIREBASE_SERVICE_ACCOUNT_KEY;
+
+  if (serviceAccountJson) {
+    return JSON.parse(serviceAccountJson);
   }
 
   return {
