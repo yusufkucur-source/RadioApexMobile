@@ -1,0 +1,9 @@
+node_modules/
+.expo/
+.git/
+*.apk
+*.aab
+android/.gradle/
+android/build/
+android/app/build/
+RadioApex-*.apk
