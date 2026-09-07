@@ -28,6 +28,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import {
   ActivityIndicator,
   Animated,
+  BackHandler,
   Easing,
   Image,
   ImageBackground,
@@ -1141,6 +1142,26 @@ export default function App() {
     []
   );
 
+  useEffect(() => {
+    const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (isShareOptionsVisible) {
+        closeShareOptions();
+        return true;
+      }
+
+      if (isMenuVisible) {
+        closeMenu();
+        return true;
+      }
+
+      return false;
+    });
+
+    return () => {
+      subscription.remove();
+    };
+  }, [closeMenu, closeShareOptions, isMenuVisible, isShareOptionsVisible]);
+
   const navigateToScreen = useCallback(
     (nextScreen: AppScreen) => {
       if (nextScreen === activeScreen) {
@@ -1348,7 +1369,6 @@ export default function App() {
                   titleFontSize={titleFontSize}
                   togglePlayback={togglePlayback}
                   waveAnimations={waveAnimations}
-                  openExternalUrl={openExternalUrl}
                   openShareOptions={openShareOptions}
                 />
               ) : activeScreen === 'djs' ? (
@@ -1446,6 +1466,36 @@ export default function App() {
                       );
                     })}
                   </View>
+
+                  <View style={styles.moreSocialSection}>
+                    <Text style={styles.moreSocialTitle}>SOCIAL</Text>
+                    <View style={styles.moreSocialRow}>
+                      {socialLinks.map((social) => {
+                        const Icon = social.icon;
+
+                        return (
+                          <Pressable
+                            key={social.label}
+                            accessibilityLabel={social.label}
+                            accessibilityRole="link"
+                            onPress={() => openExternalUrl(social.href)}
+                            style={({ pressed }) => [
+                              styles.moreSocialButton,
+                              pressed && styles.moreSocialButtonPressed,
+                            ]}
+                          >
+                            {({ pressed }) => (
+                              <Icon
+                                color={pressed ? '#fd1d35' : 'rgba(255,255,255,0.68)'}
+                                size={18}
+                                strokeWidth={2}
+                              />
+                            )}
+                          </Pressable>
+                        );
+                      })}
+                    </View>
+                  </View>
                 </Animated.View>
               </View>
             ) : null}
@@ -1535,7 +1585,6 @@ type HomeScreenProps = {
   isStreamLoading: boolean;
   liveFontSize: number;
   nowPlaying: NowPlaying;
-  openExternalUrl: (url: string) => void;
   openShareOptions: () => void;
   playHighBitrateStream: () => void;
   playLowBitrateStream: () => void;
@@ -1557,7 +1606,6 @@ function HomeScreen({
   isStreamLoading,
   liveFontSize,
   nowPlaying,
-  openExternalUrl,
   openShareOptions,
   playHighBitrateStream,
   playLowBitrateStream,
@@ -1614,6 +1662,33 @@ function HomeScreen({
           >
             {nowPlaying.artist || 'RADIO APEX'}
           </Text>
+          <Pressable
+            accessibilityLabel="Open share options"
+            accessibilityRole="button"
+            onPress={openShareOptions}
+            style={({ pressed }) => [
+              styles.nowPlayingShareButton,
+              pressed && styles.nowPlayingShareButtonPressed,
+            ]}
+          >
+            {({ pressed }) => (
+              <>
+                <ShareIcon
+                  color={pressed ? '#ffffff' : '#fd1d35'}
+                  size={16}
+                  strokeWidth={2}
+                />
+                <Text
+                  style={[
+                    styles.nowPlayingShareText,
+                    pressed && styles.nowPlayingShareTextPressed,
+                  ]}
+                >
+                  SHARE
+                </Text>
+              </>
+            )}
+          </Pressable>
         </View>
 
         <View style={styles.playerWrap}>
@@ -1719,50 +1794,6 @@ function HomeScreen({
       </View>
 
       <RecentTracks tracks={nowPlaying.songHistory} />
-
-      <View style={styles.socialRow}>
-        {socialLinks.map((social) => {
-          const Icon = social.icon;
-
-          return (
-            <Pressable
-              key={social.label}
-              accessibilityLabel={social.label}
-              accessibilityRole="link"
-              onPress={() => openExternalUrl(social.href)}
-              style={({ pressed }) => [
-                styles.socialButton,
-                pressed && styles.socialButtonPressed,
-              ]}
-            >
-              {({ pressed }) => (
-                <Icon
-                  color={pressed ? '#fd1d35' : 'rgba(255,255,255,0.60)'}
-                  size={17}
-                  strokeWidth={2}
-                />
-              )}
-            </Pressable>
-          );
-        })}
-        <Pressable
-          accessibilityLabel="Open share options"
-          accessibilityRole="button"
-          onPress={openShareOptions}
-          style={({ pressed }) => [
-            styles.socialButton,
-            pressed && styles.socialButtonPressed,
-          ]}
-        >
-          {({ pressed }) => (
-            <ShareIcon
-              color={pressed ? '#fd1d35' : 'rgba(255,255,255,0.60)'}
-              size={17}
-              strokeWidth={2}
-            />
-          )}
-        </Pressable>
-      </View>
     </>
   );
 }
@@ -3439,6 +3470,38 @@ const styles = StyleSheet.create({
     fontSize: 12,
     lineHeight: 17,
   },
+  moreSocialSection: {
+    borderTopColor: 'rgba(255,255,255,0.08)',
+    borderTopWidth: 1,
+    gap: 12,
+    marginTop: 14,
+    paddingTop: 14,
+  },
+  moreSocialTitle: {
+    color: 'rgba(255,255,255,0.42)',
+    fontFamily: 'Antonio_400Regular',
+    fontSize: 10,
+    letterSpacing: 3.8,
+  },
+  moreSocialRow: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  moreSocialButton: {
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.055)',
+    borderColor: 'rgba(255,255,255,0.10)',
+    borderRadius: 999,
+    borderWidth: 1,
+    height: 44,
+    justifyContent: 'center',
+    width: 44,
+  },
+  moreSocialButtonPressed: {
+    backgroundColor: 'rgba(253,29,53,0.10)',
+    borderColor: 'rgba(253,29,53,0.50)',
+    transform: [{ scale: 1.06 }],
+  },
   livePill: {
     alignItems: 'center',
     alignSelf: 'center',
@@ -4197,6 +4260,35 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     textTransform: 'uppercase',
   },
+  nowPlayingShareButton: {
+    alignItems: 'center',
+    alignSelf: 'center',
+    backgroundColor: 'rgba(5,5,9,0.54)',
+    borderColor: 'rgba(253,29,53,0.44)',
+    borderRadius: 999,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 8,
+    height: 38,
+    justifyContent: 'center',
+    marginTop: 16,
+    minWidth: 108,
+    paddingHorizontal: 16,
+  },
+  nowPlayingShareButtonPressed: {
+    backgroundColor: 'rgba(253,29,53,0.16)',
+    borderColor: 'rgba(253,29,53,0.76)',
+    transform: [{ scale: 0.97 }],
+  },
+  nowPlayingShareText: {
+    color: 'rgba(255,255,255,0.82)',
+    fontFamily: 'Roboto_700Bold',
+    fontSize: 11,
+    letterSpacing: 1.6,
+  },
+  nowPlayingShareTextPressed: {
+    color: '#ffffff',
+  },
   playerWrap: {
     alignItems: 'center',
     height: 310,
@@ -4544,35 +4636,5 @@ const styles = StyleSheet.create({
   },
   bottomNavLabelActive: {
     color: '#ffffff',
-  },
-  socialRow: {
-    bottom: 100,
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 16,
-    justifyContent: 'center',
-    left: 0,
-    paddingBottom: 0,
-    paddingHorizontal: 22,
-    position: 'absolute',
-    right: 0,
-  },
-  socialButton: {
-    alignItems: 'center',
-    backgroundColor: 'rgba(255,255,255,0.07)',
-    borderColor: 'rgba(255,255,255,0.10)',
-    borderRadius: 999,
-    borderWidth: 1,
-    height: 44,
-    justifyContent: 'center',
-    width: 44,
-  },
-  socialButtonPressed: {
-    backgroundColor: 'rgba(253,29,53,0.10)',
-    borderColor: 'rgba(253,29,53,0.50)',
-    transform: [{ scale: 1.08 }],
-  },
-  socialButtonDisabled: {
-    opacity: 0.68,
   },
 });
