@@ -1751,7 +1751,7 @@ function HomeScreen({
             accessibilityRole="button"
             accessibilityLabel="128 kbps yayini baslat"
             accessibilityState={{ selected: activeStreamQuality === '128' && isPlaying }}
-            hitSlop={10}
+            hitSlop={12}
             onPress={playLowBitrateStream}
             style={({ pressed }) => [
               styles.qualityButton,
@@ -1773,7 +1773,7 @@ function HomeScreen({
             accessibilityRole="button"
             accessibilityLabel="320 kbps yayini baslat"
             accessibilityState={{ selected: activeStreamQuality === '320' && isPlaying }}
-            hitSlop={10}
+            hitSlop={12}
             onPress={playHighBitrateStream}
             style={({ pressed }) => [
               styles.qualityButton,
@@ -4330,9 +4330,9 @@ const styles = StyleSheet.create({
   qualityButtonRow: {
     alignItems: 'center',
     flexDirection: 'row',
-    gap: 10,
+    gap: 8,
     justifyContent: 'center',
-    marginTop: -42,
+    marginTop: -36,
     zIndex: 4,
   },
   qualityButton: {
@@ -4342,10 +4342,10 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     borderWidth: 1,
     elevation: 8,
-    height: 36,
+    height: 32,
     justifyContent: 'center',
-    minWidth: 104,
-    paddingHorizontal: 18,
+    minWidth: 88,
+    paddingHorizontal: 14,
     shadowColor: '#fd1d35',
     shadowOffset: { height: 0, width: 0 },
     shadowOpacity: 0.36,
@@ -4363,8 +4363,8 @@ const styles = StyleSheet.create({
   qualityButtonText: {
     color: 'rgba(255,255,255,0.78)',
     fontFamily: 'Roboto_700Bold',
-    fontSize: 11,
-    letterSpacing: 1.6,
+    fontSize: 10,
+    letterSpacing: 1.35,
   },
   qualityButtonTextActive: {
     color: '#ffffff',
