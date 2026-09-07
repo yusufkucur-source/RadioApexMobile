@@ -702,7 +702,7 @@ function useLineup() {
   return { lineup, isLineupLoading };
 }
 
-function useRecentTracks() {
+function useRecentTracks(refreshKey: string) {
   const [recentTracks, setRecentTracks] = useState<SongHistoryItem[]>([]);
 
   useEffect(() => {
@@ -734,12 +734,10 @@ function useRecentTracks() {
     };
 
     void refreshRecentTracks();
-    const refreshTimer = setInterval(refreshRecentTracks, 5 * 60 * 1000);
     return () => {
       isMounted = false;
-      clearInterval(refreshTimer);
     };
-  }, []);
+  }, [refreshKey]);
 
   return recentTracks;
 }
@@ -786,7 +784,7 @@ export default function App() {
     return () => subscription.remove();
   }, []);
   const { lineup, isLineupLoading } = useLineup();
-  const recentTracks = useRecentTracks();
+  const recentTracks = useRecentTracks(`${nowPlaying.artist}|${nowPlaying.title}`);
 
   const pulseRing = useRef(new Animated.Value(0)).current;
   const glowPulse = useRef(new Animated.Value(0)).current;
