@@ -22,6 +22,7 @@ import { initializeApp, getApps, type FirebaseApp } from 'firebase/app';
 import {
   collection,
   getFirestore,
+  getDocs,
   limit,
   onSnapshot,
   orderBy,
@@ -717,21 +718,27 @@ function useRecentTracks() {
       limit(5)
     );
 
-    const unsubscribe = onSnapshot(
-      recentTracksQuery,
-      (snapshot) => {
+    let isMounted = true;
+    const refreshRecentTracks = async () => {
+      try {
+        const snapshot = await getDocs(recentTracksQuery);
+        if (!isMounted) return;
         setRecentTracks(
           snapshot.docs
             .map((item) => transformRecentTrackDoc(item.data()))
             .filter((item): item is SongHistoryItem => Boolean(item))
         );
-      },
-      (error) => {
+      } catch (error) {
         console.warn('Failed to load recent tracks.', error);
       }
-    );
+    };
 
-    return unsubscribe;
+    void refreshRecentTracks();
+    const refreshTimer = setInterval(refreshRecentTracks, 5 * 60 * 1000);
+    return () => {
+      isMounted = false;
+      clearInterval(refreshTimer);
+    };
   }, []);
 
   return recentTracks;
