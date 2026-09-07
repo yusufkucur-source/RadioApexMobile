@@ -25,6 +25,7 @@
     },
     "android": {
       "package": "com.radioapex.app",
+      "googleServicesFile": "./google-services.json",
       "adaptiveIcon": {
         "backgroundColor": "#050509",
         "foregroundImage": "./assets/android-icon-foreground.png",

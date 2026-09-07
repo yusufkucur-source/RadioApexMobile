@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "631829219339",
+    "project_id": "radioapex-4de2e",
+    "storage_bucket": "radioapex-4de2e.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:631829219339:android:70a99eedb5f60f17679f0e",
+        "android_client_info": {
+          "package_name": "com.radioapex.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDKnyJc3OGolG0F1103Y5kvxxyLvHbGREQ"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
