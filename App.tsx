@@ -1,4 +1,6 @@
 import {
+  clearPreloadedSource,
+  preload,
   setAudioModeAsync,
   useAudioPlayer,
   useAudioPlayerStatus,
@@ -74,6 +76,7 @@ const STORY_SHARE_CARD_HEIGHT = 640;
 const MENU_ANIMATION_DURATION = 340;
 const STREAM_LOADING_MIN_DURATION = 500;
 const STREAM_LOADING_TIMEOUT = 12000;
+const STREAM_FORWARD_BUFFER_DURATION = 5;
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -746,7 +749,7 @@ function useRecentTracks(refreshKey: string) {
 export default function App() {
   const player = useAudioPlayer(null, {
     updateInterval: 500,
-    preferredForwardBufferDuration: 20,
+    preferredForwardBufferDuration: STREAM_FORWARD_BUFFER_DURATION,
   });
   const playerStatus = useAudioPlayerStatus(player);
   const { height: viewportHeight, width: viewportWidth } = useWindowDimensions();
@@ -763,6 +766,7 @@ export default function App() {
   const [activeScreen, setActiveScreen] = useState<AppScreen>('home');
   const [activeStreamQuality, setActiveStreamQuality] = useState<StreamQuality>('320');
   const [isStreamLoading, setIsStreamLoading] = useState(false);
+  const [preloadRevision, setPreloadRevision] = useState(0);
   const [isShareOptionsVisible, setIsShareOptionsVisible] = useState(false);
   const [isStoryShareLoading, setIsStoryShareLoading] = useState(false);
   const { djs, isDjsLoading } = useDjs();
@@ -794,6 +798,8 @@ export default function App() {
   const screenProgress = useRef(new Animated.Value(1)).current;
   const menuCloseTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const loadedStreamQuality = useRef<StreamQuality | null>(null);
+  const preloadedStreamQuality = useRef<StreamQuality | null>(null);
+  const isPreloadingStream = useRef(false);
   const streamLoadingStartedAt = useRef(0);
   const storyShareCardRef = useRef<View>(null);
   const recentTracksRef = useRef<SongHistoryItem[]>([]);
@@ -933,6 +939,35 @@ export default function App() {
       clearTimeout(timeoutTimer);
     };
   }, [isStreamLoading, playerStatus.playing]);
+
+  useEffect(() => {
+    // Web preloading downloads the source as a blob, which is unsuitable for an endless live stream.
+    if (Platform.OS === 'web' || !isPlaying || isPreloadingStream.current) {
+      return;
+    }
+
+    const nextQuality: StreamQuality = activeStreamQuality === '320' ? '128' : '320';
+    if (preloadedStreamQuality.current === nextQuality) {
+      return;
+    }
+
+    isPreloadingStream.current = true;
+    const source = nextQuality === '320' ? STREAM_URL_320 : STREAM_URL_128;
+    void preload(source, { preferredForwardBufferDuration: STREAM_FORWARD_BUFFER_DURATION })
+      .then(() => {
+        // A tap can select this source while its preload is still in flight.
+        if (loadedStreamQuality.current !== nextQuality) {
+          preloadedStreamQuality.current = nextQuality;
+        }
+      })
+      .catch((error) => {
+        console.warn('Alternate stream could not be preloaded.', error);
+      })
+      .finally(() => {
+        isPreloadingStream.current = false;
+        setPreloadRevision((revision) => revision + 1);
+      });
+  }, [activeStreamQuality, isPlaying, preloadRevision]);
 
   useEffect(() => {
     pulseRing.stopAnimation();
