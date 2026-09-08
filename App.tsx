@@ -1111,6 +1111,13 @@ export default function App() {
         setIsStreamLoading(true);
         player.replace(source);
         loadedStreamQuality.current = quality;
+        // iOS consumes a preloaded source when it is assigned to a player.
+        if (preloadedStreamQuality.current === quality) {
+          preloadedStreamQuality.current = null;
+          void clearPreloadedSource(source).catch(() => {
+            // iOS has already removed the source when player.replace() consumes it.
+          });
+        }
       } else {
         setIsStreamLoading(false);
       }
