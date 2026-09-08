@@ -64,6 +64,7 @@ const STREAM_URL_320 = 'https://radio.cast.click/radio/8000/radioapex.flac';
 const STREAM_URL_128 = 'https://radio.cast.click/radio/8000/radio.mp3';
 const NOW_PLAYING_URL = 'https://radioapex.com.tr/api/now-playing';
 const AZURACAST_NOW_PLAYING_URL = 'https://radio.cast.click/api/nowplaying/radioapex';
+const RECENT_TRACKS_COLLECTION = 'recentTracks';
 const DEFAULT_ARTWORK_URL = 'https://radioapex.com.tr/android-chrome-512x512.png';
 const SHARE_URL = 'https://radioapex.com.tr';
 const STORY_SHARE_IMAGE_WIDTH = 1080;
@@ -713,7 +714,7 @@ function useRecentTracks(refreshKey: string) {
     }
 
     const recentTracksQuery = query(
-      collection(db, 'trackHistory'),
+      collection(db, RECENT_TRACKS_COLLECTION),
       orderBy('playedAt', 'desc'),
       limit(5)
     );
