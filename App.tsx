@@ -61,6 +61,7 @@ import Svg, { Circle, Path, Rect } from 'react-native-svg';
 import { captureRef } from 'react-native-view-shot';
 import AplexLogoRed from './assets/AplexLogoRed.svg';
 import TurntableLoop from './assets/turntable-loop.svg';
+import { trackAnalyticsEvent } from './lib/analytics';
 
 const STREAM_URL_320 = 'https://radio.cast.click/radio/8000/radioapex.flac';
 const STREAM_URL_128 = 'https://radio.cast.click/radio/8000/radio.mp3';
@@ -1125,6 +1126,7 @@ export default function App() {
       player.setActiveForLockScreen(true, lockScreenMetadata, lockScreenOptions);
       setActiveStreamQuality(quality);
       player.play();
+      trackAnalyticsEvent('stream_start', { quality });
     },
     [lockScreenMetadata, lockScreenOptions, player]
   );
@@ -1133,11 +1135,12 @@ export default function App() {
     if (isPlaying) {
       setIsStreamLoading(false);
       activePlayer.pause();
+      trackAnalyticsEvent('stream_stop', { quality: activeStreamQuality });
       return;
     }
 
     playStream('320');
-  }, [activePlayer, isPlaying, playStream]);
+  }, [activePlayer, activeStreamQuality, isPlaying, playStream]);
 
   const playLowBitrateStream = useCallback(() => {
     playStream('128');
@@ -1353,6 +1356,7 @@ export default function App() {
       }
 
       setActiveScreen(nextScreen);
+      trackAnalyticsEvent('screen_view', { screen_name: nextScreen });
       screenProgress.stopAnimation();
       screenProgress.setValue(0);
       Animated.timing(screenProgress, {
